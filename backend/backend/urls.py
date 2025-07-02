@@ -17,6 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.http import HttpResponse
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
 
 def welcome(request):
     return HttpResponse("Welcome to the Budget Management API")
@@ -25,5 +30,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', welcome, name='welcome'),
     path('api/', include('budgetapp.urls')),
-    path('api/auth/', include('rest_framework.urls')),  # For login/logout
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
