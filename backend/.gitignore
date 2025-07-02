@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+
+# Django
+db.sqlite3
+.env
+
+# Virtualenv
+web-venv/
+venv/
+.env/
+
+# VSCode
+.vscode/
+
+# Migrations (optional if you want fresh start)
+**/migrations/*.py
+!**/migrations/__init__.py
