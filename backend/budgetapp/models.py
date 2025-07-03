@@ -6,6 +6,7 @@ from django.db.models import Sum
 
 
 class Donor(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="donors", db_index=True)
     name = models.CharField(max_length=255, db_index=True, null=True, blank=True)
     phone_number = models.CharField(max_length=15, unique=True, blank=True, null=True)
 
@@ -14,6 +15,7 @@ class Donor(models.Model):
 
 
 class Event(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="events", db_index=True)
     name = models.CharField(max_length=255, db_index=True)
     venue = models.CharField(max_length=55, db_index=True, blank=True, null=True)
     description = models.TextField(blank=True)
@@ -29,9 +31,13 @@ class Event(models.Model):
     time = models.TimeField(default=timezone.now)
 
     def total_pledged(self):
+        if not self.pk:
+            return 0
         return sum(p.amount_pledged for p in self.pledges.all())
 
     def total_received(self):
+        if not self.pk:
+            return 0
         return sum(p.total_paid() for p in self.pledges.all())
 
     def percentage_covered(self):
@@ -55,6 +61,12 @@ class Event(models.Model):
             raise ValidationError("Total budget cannot be negative.")
 
     def budget_summary(self):
+        if not self.pk:
+            return {
+                "total_budget": 0,
+                "total_allocated": 0,
+                "total_spent": 0
+            }
         return {
             "total_budget": sum(item.estimated_budget for item in self.budget_items.all()),
             "total_allocated": sum(task.allocated_amount for item in self.budget_items.all() for task in item.tasks.all()),
@@ -73,6 +85,7 @@ class Event(models.Model):
 
 
 class BudgetItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="budget_items", db_index=True)
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="budget_items", db_index=True)
     category = models.CharField(max_length=255, db_index=True)
     estimated_budget = models.DecimalField(max_digits=12, decimal_places=2)
@@ -84,15 +97,23 @@ class BudgetItem(models.Model):
         if not self.category:
             raise ValidationError("Category cannot be empty.")
 
-    def save(self, *args, **kwargs):
-        self.is_funded = self.estimated_budget <= sum(task.amount_paid for task in self.tasks.all())
-        super().save(*args, **kwargs)
+def save(self, *args, **kwargs):
+    is_new = self.pk is None  
+
+    super().save(*args, **kwargs)  
+
+    if not is_new:  
+        self.is_funded = self.estimated_budget <= sum(
+            task.amount_paid for task in self.tasks.all()
+        )
+        super().save(update_fields=["is_funded"])
 
     def __str__(self):
         return f"{self.category} - KES {self.estimated_budget}"
 
 
 class Task(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tasks", db_index=True)
     budget_item = models.ForeignKey(BudgetItem, on_delete=models.CASCADE, related_name="tasks", db_index=True)
     title = models.CharField(max_length=255, db_index=True)
     description = models.TextField(blank=True)
@@ -120,17 +141,22 @@ class Task(models.Model):
 
 
 class Pledge(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="pledges", db_index=True)
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="pledges", db_index=True)
     donor = models.ForeignKey(Donor, on_delete=models.CASCADE, related_name="pledges", db_index=True)
     amount_pledged = models.DecimalField(max_digits=10, decimal_places=2)
     is_fulfilled = models.BooleanField(default=False)
 
     def total_paid(self):
+        if not self.pk:
+            return 0
         total_mpesa = sum(p.amount for p in self.payments.all())
         total_manual = sum(p.amount for p in self.manual_payments.all())
         return total_mpesa + total_manual
 
     def balance(self):
+        if not self.pk:
+            return 0
         return max(self.amount_pledged - self.total_paid(), 0)
 
     def payment_breakdown(self):
@@ -148,6 +174,7 @@ class Pledge(models.Model):
 
 
 class MpesaPayment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="mpesa_payments", db_index=True)
     pledge = models.ForeignKey(Pledge, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', db_index=True)
     donor = models.ForeignKey(Donor, on_delete=models.SET_NULL, null=True, blank=True, related_name='mpesa_payments', db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -169,6 +196,7 @@ class MpesaPayment(models.Model):
 
 
 class ManualPayment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="manual_payments", db_index=True)
     pledge = models.ForeignKey(Pledge, on_delete=models.SET_NULL, null=True, blank=True, related_name='manual_payments', db_index=True)
     donor = models.ForeignKey(Donor, on_delete=models.SET_NULL, null=True, blank=True, related_name='manual_payments', db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
