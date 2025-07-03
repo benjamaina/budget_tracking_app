@@ -5,13 +5,14 @@ from django.contrib.auth.models import User
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
-        fields = ["id", "name", "description", "date", "time", "created_by", "venue", "total_budget"]
-        read_only_fields = ["id", "created_by"]
+        fields = ["id", "name", "description", "date", "time", "created_by", "venue", "total_budget", 'user']
+        read_only_fields = ["id", "created_by", "user"]
 
-        
+
     def create(self, validated_data):
         # Automatically set the created_by field to the current user
         request = self.context.get('request')
+        validated_data['user'] = request.user
         validated_data['created_by'] = request.user
         return super().create(validated_data)
 
