@@ -1,6 +1,20 @@
 from rest_framework import serializers
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor, Task
+from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor, Task, MpesaInfo
+from django.utils import timezone
 from django.contrib.auth.models import User
+
+class MpesaInfoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MpesaInfo
+        fields = ['id', 'paybill_number', 'till_number', 'account_name',  'user']
+        read_only_fields = ['user']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        return super().update(instance, validated_data)
 
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
@@ -13,7 +27,8 @@ class EventSerializer(serializers.ModelSerializer):
         # Automatically set the created_by field to the current user
         request = self.context.get('request')
         validated_data['user'] = request.user
-        validated_data['created_by'] = request.user
+        validated_data['created_by'] = self.context['request'].user
+        # Ensure the user is set to the current user
         return super().create(validated_data)
 
 
@@ -29,19 +44,42 @@ class PledgeSerializer(serializers.ModelSerializer):
         model = Pledge
         fields = ['id', 'event',  'amount_pledged', 'is_fulfilled', 'name', 'phone_number']
         read_only_fields = ['id']
-
-
-class MpesaPaymentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MpesaPayment
-        fields = ['phone_number', 'amount', 'transaction_id', 'timestamp', 'name']
-        read_only_fields = ['timestamp', 'transaction_id', 'phone_number', 'name']
-
+        
+    def validate(self, attrs):
+        if attrs.get('amount_pledged') <= 0:
+            raise serializers.ValidationError("Amount pledged must be greater than zero.")
+        return attrs
+        
+        donor_data = data.get('donor', {})
+        if not donor_data.get('phone_number') and not donor_data.get('name'):
+            raise serializers.ValidationError("Donor phone number and name are required.")
+        return data
+        
     def create(self, validated_data):
-        phone = validated_data.get('phone_number')
-        pledge = Pledge.objects.filter(phone_number=phone).order_by('-id').first()
-        validated_data['pledge'] = pledge
+        request = self.context.get('request')
+        user = request.user
+        validated_data['user'] = user
+
+        donor_data = validated_data.pop('donor', {})
+        donor, created = Donor.objects.get_or_create(
+            user=user,
+            phone_number=donor_data.get('phone_number'),
+            name=donor_data.get('name'),
+        )
+        validated_data['donor'] = donor
         return super().create(validated_data)
+
+# class MpesaPaymentSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = MpesaPayment
+#         fields = ['phone_number', 'amount', 'transaction_id', 'timestamp', 'name']
+#         read_only_fields = ['timestamp', 'transaction_id', 'phone_number', 'name']
+
+#     def create(self, validated_data):
+#         phone = validated_data.get('phone_number')
+#         pledge = Pledge.objects.filter(doner_phone_number=phone).order_by('-id').first()
+#         validated_data['pledge'] = pledge
+#         return super().create(validated_data)
 
 class ManualPaymentSerializer(serializers.ModelSerializer):
     class Meta:

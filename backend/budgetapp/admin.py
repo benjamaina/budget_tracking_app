@@ -1,8 +1,10 @@
 from django.contrib import admin
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor
+from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor, MpesaInfo
 from django.db.models import Sum
 from django.utils.translation import gettext_lazy as _
 from django.contrib.admin import ModelAdmin, register, TabularInline
+from .forms import PledgeAdminForm
+
 
 
 admin.site.site_header = "Budget Management Admin"
@@ -32,6 +34,7 @@ class PledgeInline(TabularInline):
 
 @register(Event)
 class EventAdmin(ModelAdmin):
+    exclude = ('user', 'created_by',)
     list_display = (
         'name', 'date','total_budget', 'created_by', 'total_pledged', 'total_received',
         'percentage_covered', 'outstanding_balance', 'venue', "is_funded"
@@ -44,7 +47,7 @@ class EventAdmin(ModelAdmin):
 
     fieldsets = (
         (None, {
-            'fields': ('name', 'venue', 'description', 'total_budget', 'created_by', 'date', 'time')
+            'fields': ('name', 'venue', 'description', 'total_budget',  'date', 'time')
         }),
         ('Summary', {
             'fields': ('budget_summary_display',),
@@ -78,13 +81,20 @@ class EventAdmin(ModelAdmin):
     budget_summary_display.short_description = 'Budget Summary'
     budget_summary_display.allow_tags = True
 
-
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            obj.user = request.user
+            obj.created_by = request.user
+        return super().save_model(request, obj, form, change)
+        
 # ============================
 # BudgetItem Admin
 # ============================
 
 @register(BudgetItem)
 class BudgetItemAdmin(ModelAdmin):
+    
+    exclude = ('user',)
     list_display = ('event', 'category', 'estimated_budget', 'is_funded')
     search_fields = ('category',)
     list_filter = ('event', 'is_funded')
@@ -95,29 +105,71 @@ class BudgetItemAdmin(ModelAdmin):
         }),
     )
 
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            obj.user = request.user
+        return super().save_model(request, obj, form, change)
 
 # ============================
 # Pledge Admin
 # ============================
-
 @register(Pledge)
 class PledgeAdmin(ModelAdmin):
-    list_display = ('event', 'donor', 'amount_pledged', 'total_paid_display', 'is_fulfilled')
+    form = PledgeAdminForm
+    raw_id_fields = ['donor']
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "donor":
+            kwargs["queryset"] = Donor.objects.filter(user=request.user)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        donor = obj.donor
+        if donor.user_id is None:
+            donor.user = request.user
+            donor.save()
+        super().save_model(request, obj, form, change)
+        
+    
+@register(Pledge)
+class PledgeAdmin(ModelAdmin):
+    form = PledgeAdminForm
+    list_display = ('event', 'donor', 'amount_pledged', 'is_fulfilled')
     search_fields = ('donor__name', 'event__name')
-    list_filter = ('is_fulfilled', 'event')
+    list_filter = ('event', 'is_fulfilled')
     ordering = ('-amount_pledged',)
-    readonly_fields = ('total_paid_display',)
+    readonly_fields = ('total_paid',)
 
     fieldsets = (
         (None, {
-            'fields': ('event', 'donor', 'amount_pledged', 'total_paid_display', 'is_fulfilled')
+            'fields': ('event', 'donor', 'amount_pledged', 'is_fulfilled')
+        }),
+        ('Payment Summary', {
+            'fields': ('total_paid',),
+            'classes': ('collapse',),
         }),
     )
 
-    def total_paid_display(self, obj):
-        return f"KES {obj.total_paid():,}"
-    total_paid_display.short_description = "Total Paid"
+    def donor_name(self, obj):
+        return obj.donor.name if obj.donor else "—"
+    donor_name.short_description = 'Donor Name'
 
+    def donor_phone_number(self, obj):
+        return obj.donor.phone_number if obj.donor else "—"
+
+    def total_paid(self, obj):
+        return obj.total_paid()
+    total_paid.short_description = "Total Paid"
+
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            obj.user = request.user
+            donor, _ = Donor.objects.get_or_create(
+                phone_number=obj.donor.phone_number,
+                defaults={"name": obj.donor.name or "Unnamed Donor"}
+            )
+            obj.donor = donor
+        return super().save_model(request, obj, form, change)
 
 # ============================
 # MpesaPayment Admin
@@ -166,20 +218,19 @@ class ManualPaymentAdmin(ModelAdmin):
 
 
 # ============================
-# Donor Admin
+# MpesaInfo Admin
 # ============================
+@register(MpesaInfo)
+class MpesaInfoAdmin(ModelAdmin):
+    list_display = ('user', 'paybill_number', 'till_number', 'account_name')
 
-# @register(Donor)
-# class DonorAdmin(ModelAdmin):
-#     list_display = ('name', 'phone_number', 'total_pledges', 'total_paid')
-#     search_fields = ('name', 'phone_number')
-#     ordering = ('name',)
+    fieldsets = (
+        (None, {
+            'fields': ('user', 'paybill_number', 'till_number', 'account_name')
+        }),
+    )
 
-#     def total_pledges(self, obj):
-#         return obj.pledges.count()
-
-#     def total_paid(self, obj):
-#         return sum(p.total_paid() for p in obj.pledges.all())
-
-#     total_pledges.short_description = "No. of Pledges"
-#     total_paid.short_description = "Total Paid (All)"
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            obj.user = request.user
+        return super().save_model(request, obj, form, change)

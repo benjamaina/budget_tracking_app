@@ -9,9 +9,9 @@ from django.utils.decorators import method_decorator
 from django.http import JsonResponse
 import json
 import logging
-
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor
-from .serializers import EventSerializer, BudgetItemSerializer, PledgeSerializer, MpesaPaymentSerializer, ManualPaymentSerializer
+from decimal import Decimal
+from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor, MpesaInfo
+from .serializers import EventSerializer, BudgetItemSerializer, PledgeSerializer, ManualPaymentSerializer, MpesaInfoSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -76,44 +76,73 @@ class ManualPaymentViewSet(viewsets.ModelViewSet):
         )
         serializer.save(pledge=pledge, donor=donor)
 
+class MpesaInfoView(viewsets.ModelViewSet):
+    serializer_class = MpesaInfoSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return MpesaInfo.objects.filter(user=self.request.user)
+    
+    def get(self, request):
+        mpesa_info = MpesaInfo.objects.filter(user=request.user).first()
+        if mpesa_info:
+            serializer = MpesaInfoSerializer(mpesa_info)
+            return Response(serializer.data)
+        return Response({"detail": "Mpesa info not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    
+
+    def post(self, request):
+        mpesa_info, _ = MpesaInfo.objects.get_or_create(user=request.user)
+        serializer = MpesaInfoSerializer(mpesa_info, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class MpesaWebhookView(View):
     def post(self, request, *args, **kwargs):
         try:
             data = json.loads(request.body)
-            logger.info(f"Incoming M-Pesa payment: {data}")
+            transaction_id = data.get('transaction_id')
+            amount = data.get('amount')
+            phone_number = data.get('phone_number')
+            paybill = data.get('paybill')  # Add this in payload!
 
-            trans_id = data.get('TransID')
-            phone = data.get('MSISDN')
-            try:
-                amount = float(data.get('TransAmount'))
-            except (TypeError, ValueError):
-                return JsonResponse({"ResultCode": 1, "ResultDesc": "Invalid amount"}, status=400)
+            if not all([transaction_id, amount, phone_number, paybill]):
+                return JsonResponse({"error": "Missing required fields"}, status=400)
 
-            if not all([trans_id, phone, amount]):
-                return JsonResponse({"ResultCode": 1, "ResultDesc": "Missing fields"}, status=400)
+            if MpesaPayment.objects.filter(transaction_id=transaction_id).exists():
+                return JsonResponse({"message": "Transaction already recorded"}, status=200)
 
-            if MpesaPayment.objects.filter(transaction_id=trans_id).exists():
-                return JsonResponse({"ResultCode": 0, "ResultDesc": "Already processed"})
+            mpesa_info = MpesaInfo.objects.filter(paybill_number=paybill).first()
+            if not mpesa_info:
+                return JsonResponse({"error": "No user found for that paybill"}, status=404)
 
-            pledge = Pledge.objects.filter(donor__phone_number=phone).order_by('-id').first()
+            user = mpesa_info.user
 
-            MpesaPayment.objects.create(
+            donor, _ = Donor.objects.get_or_create(user=user, phone_number=phone_number, defaults={"name": "Unknown Donor"})
+
+            pledge = Pledge.objects.filter(user=user, donor=donor).order_by('-id').first()
+
+            payment = MpesaPayment.objects.create(
+                user=user,
+                donor=donor,
                 pledge=pledge,
-                donor=pledge.donor if pledge else None,
-                amount=amount,
-                transaction_id=trans_id
+                amount=Decimal(amount),
+                transaction_id=transaction_id
             )
 
-            if pledge:
-                pledge.save()
+            return JsonResponse({"message": "Payment recorded", "payment_id": payment.id}, status=201)
 
-            return JsonResponse({"ResultCode": 0, "ResultDesc": "Accepted"})
-
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
         except Exception as e:
-            logger.error(f"Error processing M-Pesa webhook: {str(e)}")
-            return JsonResponse({"ResultCode": 1, "ResultDesc": "Server error"}, status=500)
+            print(f"Webhook error: {e}")
+            return JsonResponse({"error": "Internal server error"}, status=500)
 
 
 class DashboardMetricsView(generics.RetrieveAPIView):

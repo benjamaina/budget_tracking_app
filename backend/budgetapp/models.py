@@ -8,7 +8,10 @@ from django.db.models import Sum
 class Donor(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="donors", db_index=True)
     name = models.CharField(max_length=255, db_index=True, null=True, blank=True)
-    phone_number = models.CharField(max_length=15, unique=True, blank=True, null=True)
+    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    
+    class Meta:
+        unique_together = ('user', 'phone_number', 'name')
 
     def __str__(self):
         return f"{self.name} - {self.phone_number}"
@@ -26,7 +29,7 @@ class Event(models.Model):
         db_index=True,
         help_text="Total budget allocated for the event"
     )
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE, db_index=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, db_index=True, editable=False)
     date = models.DateField(default=timezone.now, db_index=True)
     time = models.TimeField(default=timezone.now)
 
@@ -143,7 +146,7 @@ class Task(models.Model):
 class Pledge(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="pledges", db_index=True)
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="pledges", db_index=True)
-    donor = models.ForeignKey(Donor, on_delete=models.CASCADE, related_name="pledges", db_index=True)
+    donor = models.ForeignKey(Donor, on_delete=models.CASCADE, related_name="pledges", db_index=True, null=True, blank=True)
     amount_pledged = models.DecimalField(max_digits=10, decimal_places=2)
     is_fulfilled = models.BooleanField(default=False)
 
@@ -166,8 +169,12 @@ class Pledge(models.Model):
         }
 
     def save(self, *args, **kwargs):
-        self.is_fulfilled = self.total_paid() >= self.amount_pledged
-        super().save(*args, **kwargs)
+        is_new = self.pk is None  
+        super().save(*args, **kwargs)  
+
+        if not is_new:  
+            self.is_fulfilled = self.total_paid() >= self.amount_pledged
+            super().save(update_fields=["is_fulfilled"])
 
     def __str__(self):
         return f"{self.donor.name} pledged KES {self.amount_pledged}"
@@ -214,3 +221,14 @@ class ManualPayment(models.Model):
 
     def __str__(self):
         return f"Manual Payment - KES {self.amount} on {self.date}"
+
+
+class MpesaInfo(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="mpesa_info")
+    paybill_number = models.CharField(max_length=20, blank=True, null=True)
+    till_number = models.CharField(max_length=20, blank=True, null=True)
+    account_name = models.CharField(max_length=50, blank=True, null=True)
+    
+
+    def __str__(self):
+        return f"M-Pesa Info for {self.user.username}"

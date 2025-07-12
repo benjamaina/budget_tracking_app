@@ -14,6 +14,18 @@ from pathlib import Path
 import os
 from decouple import config, Csv
 
+
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+sentry_sdk.init(
+    dsn="https://5939b5514f329f7e375a3a75fa693ee2@o4509655137320960.ingest.us.sentry.io/4509655138828288",
+    # Add data like request headers and IP for users,
+    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+    send_default_pii=True,
+)
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
