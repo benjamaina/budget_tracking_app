@@ -10,9 +10,13 @@ from django.http import JsonResponse
 import json
 import logging
 from decimal import Decimal
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor, MpesaInfo
-from .serializers import EventSerializer, BudgetItemSerializer, PledgeSerializer, ManualPaymentSerializer, MpesaInfoSerializer
-
+from .models import (Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, 
+                     MpesaInfo, VendorPayment, ServiceProvider, VendorCashPayment)
+from .serializers import (EventSerializer, BudgetItemSerializer, 
+                          PledgeSerializer, ManualPaymentSerializer,
+                            MpesaInfoSerializer, VendorCashPaymentSerializer, 
+                            VendorPaymentSerializer, ServiceProviderSerializer
+)
 logger = logging.getLogger(__name__)
 
 class EventViewSet(viewsets.ModelViewSet):
@@ -21,10 +25,10 @@ class EventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, user=self.request.user)
+        serializer.save(user=self.request.user)
 
     def get_queryset(self):
-        return Event.objects.filter(created_by=self.request.user)
+        return Event.objects.filter(user=self.request.user)
 
 
 class BudgetItemViewSet(viewsets.ModelViewSet):
@@ -33,13 +37,10 @@ class BudgetItemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
-        return BudgetItem.objects.filter(event_id=event_id)
+        return BudgetItem.objects.filter(event_id=event_id, user=self.request.user)
 
     def perform_create(self, serializer):
-        event_id = self.kwargs.get('event_id')
-        event = Event.objects.get(id=event_id)
-        serializer.save(event=event)
-
+        serializer.save(user=self.request.user)
 
 class PledgeViewSet(viewsets.ModelViewSet):
     serializer_class = PledgeSerializer
@@ -47,35 +48,25 @@ class PledgeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
-        return Pledge.objects.filter(event_id=event_id)
+        return Pledge.objects.filter(event_id=event_id, user = self.request.user)
 
     def perform_create(self, serializer):
         event_id = self.kwargs.get('event_id')
         event = Event.objects.get(id=event_id)
-        donor, _ = Donor.objects.get_or_create(
-            phone_number=self.request.user.username,
-            defaults={"name": self.request.user.get_full_name() or "Unnamed Donor"}
-        )
-        serializer.save(event=event, donor=donor)
-
-
+        
+        
 class ManualPaymentViewSet(viewsets.ModelViewSet):
     serializer_class = ManualPaymentSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         pledge_id = self.kwargs.get('pledge_id')
-        return ManualPayment.objects.filter(pledge_id=pledge_id)
+        return ManualPayment.objects.filter(pledge_id=pledge_id, user = self.request.user)
 
     def perform_create(self, serializer):
         pledge_id = self.kwargs.get('pledge_id')
         pledge = Pledge.objects.get(id=pledge_id)
-        donor, _ = Donor.objects.get_or_create(
-            phone_number=self.request.user.username,
-            defaults={"name": self.request.user.get_full_name() or "Unnamed Donor"}
-        )
-        serializer.save(pledge=pledge, donor=donor)
-
+        
 class MpesaInfoView(viewsets.ModelViewSet):
     serializer_class = MpesaInfoSerializer
     permission_classes = [IsAuthenticated]
@@ -102,47 +93,78 @@ class MpesaInfoView(viewsets.ModelViewSet):
 
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class MpesaWebhookView(View):
-    def post(self, request, *args, **kwargs):
-        try:
-            data = json.loads(request.body)
-            transaction_id = data.get('transaction_id')
-            amount = data.get('amount')
-            phone_number = data.get('phone_number')
-            paybill = data.get('paybill')  # Add this in payload!
+class VendorPaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = VendorPaymentSerializer
+    permission_classes = [IsAuthenticated]
 
-            if not all([transaction_id, amount, phone_number, paybill]):
-                return JsonResponse({"error": "Missing required fields"}, status=400)
+    def get_queryset(self):
+        return VendorPayment.objects.filter(user=self.request.user)
 
-            if MpesaPayment.objects.filter(transaction_id=transaction_id).exists():
-                return JsonResponse({"message": "Transaction already recorded"}, status=200)
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
-            mpesa_info = MpesaInfo.objects.filter(paybill_number=paybill).first()
-            if not mpesa_info:
-                return JsonResponse({"error": "No user found for that paybill"}, status=404)
+class ServiceProviderViewSet(viewsets.ModelViewSet):
+    serializer_class = ServiceProviderSerializer
+    permission_classes = [IsAuthenticated]
 
-            user = mpesa_info.user
+    def get_queryset(self):
+        return ServiceProvider.objects.filter(user=self.request.user)
 
-            donor, _ = Donor.objects.get_or_create(user=user, phone_number=phone_number, defaults={"name": "Unknown Donor"})
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+        
 
-            pledge = Pledge.objects.filter(user=user, donor=donor).order_by('-id').first()
+class VendorCashPaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = VendorCashPaymentSerializer
+    permission_classes = [IsAuthenticated]
 
-            payment = MpesaPayment.objects.create(
-                user=user,
-                donor=donor,
-                pledge=pledge,
-                amount=Decimal(amount),
-                transaction_id=transaction_id
-            )
+    def get_queryset(self):
+        return VendorCashPayment.objects.filter(user=self.request.user)
 
-            return JsonResponse({"message": "Payment recorded", "payment_id": payment.id}, status=201)
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON"}, status=400)
-        except Exception as e:
-            print(f"Webhook error: {e}")
-            return JsonResponse({"error": "Internal server error"}, status=500)
+# @method_decorator(csrf_exempt, name='dispatch')
+# class MpesaWebhookView(View):
+#     def post(self, request, *args, **kwargs):
+#         try:
+#             data = json.loads(request.body)
+#             transaction_id = data.get('transaction_id')
+#             amount = data.get('amount')
+#             phone_number = data.get('phone_number')
+#             paybill = data.get('paybill')  # Add this in payload!
+
+#             if not all([transaction_id, amount, phone_number, paybill]):
+#                 return JsonResponse({"error": "Missing required fields"}, status=400)
+
+#             if MpesaPayment.objects.filter(transaction_id=transaction_id).exists():
+#                 return JsonResponse({"message": "Transaction already recorded"}, status=200)
+
+#             mpesa_info = MpesaInfo.objects.filter(paybill_number=paybill).first()
+#             if not mpesa_info:
+#                 return JsonResponse({"error": "No user found for that paybill"}, status=404)
+
+#             user = mpesa_info.user
+
+#             donor, _ = Donor.objects.get_or_create(user=user, phone_number=phone_number, defaults={"name": "Unknown Donor"})
+
+#             pledge = Pledge.objects.filter(user=user, donor=donor).order_by('-id').first()
+
+#             payment = MpesaPayment.objects.create(
+#                 user=user,
+#                 donor=donor,
+#                 pledge=pledge,
+#                 amount=Decimal(amount),
+#                 transaction_id=transaction_id
+#             )
+
+#             return JsonResponse({"message": "Payment recorded", "payment_id": payment.id}, status=201)
+
+#         except json.JSONDecodeError:
+#             return JsonResponse({"error": "Invalid JSON"}, status=400)
+#         except Exception as e:
+#             print(f"Webhook error: {e}")
+#             return JsonResponse({"error": "Internal server error"}, status=500)
 
 
 class DashboardMetricsView(generics.RetrieveAPIView):

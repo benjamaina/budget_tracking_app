@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Donor, Task, MpesaInfo
+from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Task, MpesaInfo, VendorPayment, ServiceProvider, VendorCashPayment
 from django.utils import timezone
 from django.contrib.auth.models import User
 
@@ -38,8 +38,6 @@ class BudgetItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'event', 'category', 'estimated_budget', 'is_funded']
 
 class PledgeSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(source='donor.name')
-    phone_number = serializers.CharField(source='donor.phone_number')
     class Meta:
         model = Pledge
         fields = ['id', 'event',  'amount_pledged', 'is_fulfilled', 'name', 'phone_number']
@@ -50,36 +48,12 @@ class PledgeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Amount pledged must be greater than zero.")
         return attrs
         
-        donor_data = data.get('donor', {})
-        if not donor_data.get('phone_number') and not donor_data.get('name'):
-            raise serializers.ValidationError("Donor phone number and name are required.")
-        return data
         
     def create(self, validated_data):
         request = self.context.get('request')
         user = request.user
         validated_data['user'] = user
 
-        donor_data = validated_data.pop('donor', {})
-        donor, created = Donor.objects.get_or_create(
-            user=user,
-            phone_number=donor_data.get('phone_number'),
-            name=donor_data.get('name'),
-        )
-        validated_data['donor'] = donor
-        return super().create(validated_data)
-
-# class MpesaPaymentSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = MpesaPayment
-#         fields = ['phone_number', 'amount', 'transaction_id', 'timestamp', 'name']
-#         read_only_fields = ['timestamp', 'transaction_id', 'phone_number', 'name']
-
-#     def create(self, validated_data):
-#         phone = validated_data.get('phone_number')
-#         pledge = Pledge.objects.filter(doner_phone_number=phone).order_by('-id').first()
-#         validated_data['pledge'] = pledge
-#         return super().create(validated_data)
 
 class ManualPaymentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -103,3 +77,38 @@ class TaskSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         validated_data['user'] = request.user
         return super().create(validated_data)
+    
+class VendorPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorPayment
+        fields = ['id', 'vendor', 'amount', 'date', 'description']
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['user'] = request.user
+        return super().create(validated_data)
+    
+class ServiceProviderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceProvider
+        fields = ['id', 'name', 'contact_info']
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['user'] = request.user
+        return super().create(validated_data)
+    
+class VendorCashPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorCashPayment
+        fields = ['id', 'vendor', 'amount', 'date', 'description']
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['user'] = request.user
+        return super().create(validated_data)
+    
+

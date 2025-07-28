@@ -15,15 +15,7 @@ import os
 from decouple import config, Csv
 
 
-import sentry_sdk
-from sentry_sdk.integrations.django import DjangoIntegration
 
-sentry_sdk.init(
-    dsn="https://5939b5514f329f7e375a3a75fa693ee2@o4509655137320960.ingest.us.sentry.io/4509655138828288",
-    # Add data like request headers and IP for users,
-    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
-    send_default_pii=True,
-)
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -37,7 +29,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='your-default-secret-key')
 
 
-DEBUG = config('DEBUG', default=False, cast=bool)
+# DEBUG = config('DEBUG', default=False, cast=bool)
 # ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv)
 
 # res framework Token Authentication backends
@@ -51,7 +43,7 @@ REST_FRAMEWORK = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000', cast=Csv())
+# CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000', cast=Csv())
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -106,10 +98,15 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+# Use environment variables for sensitive information
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='budgetdb'),
+        'USER': config('DB_USER', default='ben'),
+        'PASSWORD': config('DB_PASSWORD', default='198660367'),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
     }
 }
 

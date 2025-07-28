@@ -1,3 +1,23 @@
 {
-  "cSpell.words": ["authtoken", "budgetapp", "corsheaders", "simplejwt"]
+  "cSpell.words": [
+    "authtoken",
+    "budgetapp",
+    "corsheaders",
+    "simplejwt"
+  ],
+  "sqltools.connections": [
+    {
+      "mysqlOptions": {
+        "authProtocol": "default",
+        "enableSsl": "Disabled"
+      },
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 3306,
+      "driver": "MySQL",
+      "name": "testing",
+      "database": "budgetdb",
+      "username": "ben"
+    }
+  ]
 }
