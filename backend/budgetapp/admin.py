@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, MpesaInfo, Task, VendorPayment, ServiceProvider, VendorCashPayment
+from .models import (Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, 
+                     MpesaInfo, Task, VendorPayment, ServiceProvider)
 from django.db.models import Sum
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
@@ -45,6 +46,18 @@ class BudgetItemAdmin(admin.ModelAdmin):
     list_filter = ('is_funded',)
 
 
+    def total_vendor_payments(self, obj):
+        return obj.total_vendor_payments
+    total_vendor_payments.short_description = _('Total Vendor Payments')
+
+    def remaining_budget(self, obj):
+        return obj.remaining_budget
+    remaining_budget.short_description = _('Remaining Budget')
+
+    def is_fully_paid(self, obj):
+        return obj.is_fully_paid
+    is_fully_paid.short_description = _('Is Fully Paid')
+
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         if request.user.is_superuser:
@@ -73,23 +86,26 @@ class PledgeAdmin(admin.ModelAdmin):
         return obj.balance()
     balance.short_description = _('Balance')
 
+
     def save_model(self, request, obj, form, change):
-        if not change or not obj.event.user_id:
-            obj.event.user = request.user
+        if not obj.user_id:
+            obj.user = request.user
         super().save_model(request, obj, form, change)
+
 
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
     exclude = ('user',)
     list_display = ('budget_item', 'title', 'description','allocated_amount', 'amount_paid')
-    readonly_fields = ('budget_item',)
-    # search_fields = ('title')
-    list_filter = ('budget_item__event',)
+    search_fields = ('budget_item__category', 'title')
+    list_filter = ('budget_item__category',)
+
+
 
     def save_model(self, request, obj, form, change):
-        if not change or not obj.budget_item.event.user_id:
-            obj.budget_item.event.user = request.user
+        if not obj.user_id:
+            obj.user = request.user
         super().save_model(request, obj, form, change)
 
 @admin.register(ManualPayment)
@@ -102,8 +118,8 @@ class ManualPaymentAdmin(admin.ModelAdmin):
 
 
     def save_model(self, request, obj, form, change):
-        if not change or not obj.pledge.event.user_id:
-            obj.pledge.event.user = request.user
+        if not obj.user_id:
+            obj.user = request.user
         super().save_model(request, obj, form, change)
 
 
@@ -115,8 +131,8 @@ class MpesaPaymentAdmin(admin.ModelAdmin):
     list_filter = ('timestamp',)
 
     def save_model(self, request, obj, form, change):
-        if not change or not obj.pledge.event.user_id:
-            obj.pledge.event.user = request.user
+        if not obj.user_id:
+            obj.user = request.user
         super().save_model(request, obj, form, change)
 
 @admin.register(VendorPayment)
@@ -128,8 +144,8 @@ class VendorPaymentAdmin(admin.ModelAdmin):
     readonly_fields = ('date_paid',)
     
     def save_model(self, request, obj, form, change):
-        if not change or not obj.budget_item.event.user_id:
-            obj.budget_item.event.user = request.user
+        if not obj.user_id:
+            obj.user = request.user
         super().save_model(request, obj, form, change)
 
     def amount(self, obj):
@@ -145,22 +161,15 @@ class ServiceProviderAdmin(admin.ModelAdmin):
     list_filter = ('name',)
 
     def save_model(self, request, obj, form, change):
-        if not change or not obj.budget_item.event.user_id:
-            obj.budget_item.event.user = request.user
+        if not obj.user_id:
+            obj.user = request.user
         super().save_model(request, obj, form, change)
 
-@admin.register(VendorCashPayment)
-class VendorCashPaymentAdmin(admin.ModelAdmin):
-    exclude = ('user',)
-    list_display = ('budget_item', 'service_provider', 'amount')
-    search_fields = ('budget_item__category', 'service_provider__name')
-    readonly_fields = ('date_paid',)
 
-    def save_model(self, request, obj, form, change):
-        if not change or not obj.budget_item.event.user_id:
-            obj.budget_item.event.user = request.user
-        super().save_model(request, obj, form, change)
-    
-    def amount(self, obj):
-        return obj.budget_item.estimated_budget
-    amount.short_description = _('Amount')
+    def total_received(self, obj):
+        return obj.total_received
+    total_received.short_description = _('Total Received')
+
+    def balance_due(self, obj):
+        return obj.balance_due
+    balance_due.short_description = _('Balance Due')

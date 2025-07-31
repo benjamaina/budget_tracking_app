@@ -101,7 +101,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Use environment variables for sensitive information
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.db.backends.mysql',
         'NAME': config('DB_NAME', default='budgetdb'),
         'USER': config('DB_USER', default='ben'),
         'PASSWORD': config('DB_PASSWORD', default='198660367'),

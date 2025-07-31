@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Task, MpesaInfo, VendorPayment, ServiceProvider, VendorCashPayment
+from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Task, MpesaInfo, VendorPayment, ServiceProvider
 from django.utils import timezone
 from django.contrib.auth.models import User
 
@@ -99,16 +99,5 @@ class ServiceProviderSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         validated_data['user'] = request.user
         return super().create(validated_data)
-    
-class VendorCashPaymentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = VendorCashPayment
-        fields = ['id', 'vendor', 'amount', 'date', 'description']
-        read_only_fields = ['id']
 
-    def create(self, validated_data):
-        request = self.context.get('request')
-        validated_data['user'] = request.user
-        return super().create(validated_data)
-    
 

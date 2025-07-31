@@ -6,8 +6,6 @@ from django.db.models import Sum
 from django.db import transaction
 
 
-
-
 class Event(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="events", db_index=True)
     name = models.CharField(max_length=255, db_index=True)
@@ -23,9 +21,10 @@ class Event(models.Model):
     event_date = models.DateField(db_index=True)
     created_on = models.DateField(default=timezone.now)
     is_funded = models.BooleanField(default=False)
-
+        
 
     def save(self, *args, **kwargs):
+        self.full_clean()  # Ensures validation is applied
         is_new = self.pk is None  
         super().save(*args, **kwargs)  
 
@@ -34,15 +33,14 @@ class Event(models.Model):
             super().save(update_fields=["is_funded"])
 
     def total_pledged(self):
-        if not self.pk:
-            return 0
-        return sum(p.amount_pledged for p in self.pledges.all())
+     
+     return self.pledges.aggregate(total=models.Sum('amount_pledged'))['total'] or 0
 
     def total_received(self):
-        if not self.pk:
-            return 0
-        return sum(p.total_paid for p in self.pledges.all())
-
+        total_mpesa = self.mpesa_payments.aggregate(total=models.Sum('amount'))['total'] or 0
+        total_manual = self.manual_payments.aggregate(total=models.Sum('amount'))['total'] or 0
+        return total_mpesa + total_manual
+    
     def percentage_covered(self):
         total = self.total_pledged()
         return round((self.total_received() / total) * 100, 2) if total else 0
@@ -50,14 +48,8 @@ class Event(models.Model):
     def outstanding_balance(self):
         return self.total_pledged() - self.total_received()
 
-    # @property
-    # def is_funded(self):
-    #     return self.total_budget <= self.total_received()
-
 
     def clean(self):
-        if self.event_date < timezone.now().date():
-            raise ValidationError("Event date cannot be in the past.")
         if not self.name:
             raise ValidationError("Event name cannot be empty.")
         if self.total_budget < 0:
@@ -94,26 +86,38 @@ class BudgetItem(models.Model):
     estimated_budget = models.DecimalField(max_digits=12, decimal_places=2)
     is_funded = models.BooleanField(default=False)
 
-    # def auto_assign_user(self):
-    #     if not self.user_id:
-    #         self.user = self.event.user
+    @property
+    def total_vendor_payments(self):
+        return self.payments.aggregate(total=models.Sum('amount'))['total'] or 0
+
+    @property
+    def remaining_budget(self):
+        return max(self.estimated_cost - self.total_vendor_payments, 0)
+
 
     def clean(self):
-        # self.auto_assign_user()
         if self.estimated_budget < 0:
             raise ValidationError("Estimated budget cannot be negative.")
-        if self.estimated_budget > self.event.total_budget:
-            raise ValidationError("Estimated budget cannot exceed the event's total budget.")
         if not self.category:
             raise ValidationError("Category cannot be empty.")
 
-    @property
-    def total_paid_to_vendor(self):
-        return self.payments.aggregate(total=Sum("amount"))["total"] or 0
+        # Validate total estimated budget does not exceed event's total_budget
+        sibling_items = BudgetItem.objects.filter(event=self.event)
+        if self.pk:
+            sibling_items = sibling_items.exclude(pk=self.pk)
+
+        total_estimated = sibling_items.aggregate(total=Sum('estimated_budget'))['total'] or 0
+        combined_total = total_estimated + self.estimated_budget
+
+        if combined_total > self.event.total_budget:
+            raise ValidationError(
+                f"Total estimated budget for all items ({combined_total}) exceeds event's total budget ({self.event.total_budget})."
+            )
+
 
     @property
     def is_fully_paid(self):
-        return self.total_paid_to_vendor >= self.estimated_cost
+        return self.total_vendor_payments >= self.estimated_cost
 
 
     def save(self, *args, **kwargs):
@@ -121,7 +125,7 @@ class BudgetItem(models.Model):
         super().save(*args, **kwargs)
         is_new = self.pk is None
         if not is_new:
-            self.is_funded = self.total_paid_to_vendor >= self.estimated_budget
+            self.is_funded = self.total_vendor_payments >= self.estimated_budget
             super().save(update_fields=["is_funded"])
 
     def __str__(self):
@@ -136,6 +140,15 @@ class ServiceProvider(models.Model):
     email = models.EmailField(blank=True, null=True, db_index=True)
     amount_charged = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
+    @property
+    def total_received(self):
+        return self.payments.aggregate(total=models.Sum('amount'))['total'] or 0
+
+    @property
+    def balance_due(self):
+        return max(self.amount_charged - self.total_received, 0)
+
+
     def __str__(self):
         return f"{self.name} - {self.phone_number}"
 
@@ -144,6 +157,7 @@ class VendorPayment(models.Model):
     budget_item = models.ForeignKey(BudgetItem, related_name="payments", on_delete=models.CASCADE)
     service_provider = models.ForeignKey(ServiceProvider, on_delete=models.CASCADE, related_name="payments")
     payment_method = models.CharField(max_length=50, choices=[("mpesa", "Mpesa"), ("bank", "Bank Transfer"), ("cash", "Cash")])
+    transaction_code = models.CharField(max_length=100, unique=True, blank=True, null=True)
     date_paid = models.DateTimeField(auto_now_add=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     confirmed = models.BooleanField(default=False)  
@@ -154,25 +168,13 @@ class VendorPayment(models.Model):
             self.amount = self.service_provider.amount_charged
 
     def clean(self):
-        if self.payment_method not in ["mpesa", "bank", "cash"]:
-            raise ValidationError("Invalid payment method.")
         self.auto_fill_amount()
-        paid_total = VendorCashPayment.objects.filter(
-            service_provider=self.service_provider
-        ).exclude(id=self.id).aggregate(total=Sum("amount"))["total"] or 0
-
-        remaining = self.service_provider.amount_charged - paid_total
-
-        if self.amount:
-            if self.amount > remaining:
-                raise ValidationError(f"Payment exceeds the remaining balance ({remaining}).")
-        else:
-            self.amount = remaining
-        if self.amount < 0:
-            raise ValidationError("Payment amount cannot be negative.")
-        
-        if self.amount >= self.service_provider.amount_charged:
-            self.confirmed = True
+        if self.amount <= 0:
+            raise ValidationError("Payment amount must be positive.")
+        if not self.service_provider:
+            raise ValidationError("Service provider is required.")
+        if not self.budget_item:
+            raise ValidationError("Budget item is required.")
         
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -181,20 +183,8 @@ class VendorPayment(models.Model):
 
     def __str__(self):
         return f"{self.budget_item.category} - KES {self.amount} via {self.payment_method} on {self.date_paid}"
-    
-class VendorCashPayment(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="vendor_cash_payments", db_index=True)
-    budget_item = models.ForeignKey(BudgetItem, related_name="cash_payments", on_delete=models.CASCADE)
-    service_provider = models.ForeignKey(ServiceProvider, on_delete=models.CASCADE, related_name="cash_payments")
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    date_paid = models.DateTimeField(auto_now_add=True)
+ 
 
-    def clean(self):
-        if self.amount <= 0:
-            raise ValidationError("Payment amount must be positive.")
-
-    def __str__(self):
-        return f"Cash Payment - KES {self.amount} to {self.service_provider.name} on {self.date_paid}"
 
 class Task(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tasks", db_index=True)
@@ -203,10 +193,32 @@ class Task(models.Model):
     description = models.TextField(blank=True)
     allocated_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    
-    
+
+        
+    def clean(self):
+        if self.allocated_amount < 0:
+            raise ValidationError("Allocated amount cannot be negative.")
+        if self.amount_paid < 0:
+            raise ValidationError("Amount paid cannot be negative.")
+        if self.amount_paid > self.allocated_amount:
+            raise ValidationError("Amount paid cannot exceed allocated amount.")
+        
+        # Validate total allocated for all tasks under this budget item
+        sibling_tasks = Task.objects.filter(budget_item=self.budget_item)
+        if self.pk:
+            sibling_tasks = sibling_tasks.exclude(pk=self.pk)
+
+        total_allocated = sibling_tasks.aggregate(total=Sum('allocated_amount'))['total'] or 0
+        combined_total = total_allocated + self.allocated_amount
+
+        if combined_total > self.budget_item.estimated_budget:
+            raise ValidationError(
+                f"Total allocated amount for tasks ({combined_total}) exceeds budget item estimated budget ({self.budget_item.estimated_budget})."
+            )
+
 
     def save(self, *args, **kwargs):
+        self.full_clean()  # Ensures validation is applied
         self.completed = self.amount_paid >= self.allocated_amount
         super().save(*args, **kwargs)
 
@@ -215,7 +227,7 @@ class Task(models.Model):
         return max(self.allocated_amount - self.amount_paid, 0)
 
     def __str__(self):
-        return f"{self.title} - Due: {self.due_date}"
+        return f"{self.title} - KES {self.allocated_amount} ({self.budget_item.category})"
 
 
 class Pledge(models.Model):
@@ -223,7 +235,7 @@ class Pledge(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="pledges", db_index=True)
     amount_pledged = models.DecimalField(max_digits=10, decimal_places=2)
     name = models.CharField(blank=False, null=False, max_length= 25, db_index=True)
-    phone_number = models.IntegerField(db_index=True)
+    phone_number = models.CharField(max_length=15, db_index=True)
     total_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_fulfilled = models.BooleanField(default=False)
 
@@ -261,9 +273,8 @@ class Pledge(models.Model):
                 self.is_fulfilled = False
             super().save(update_fields=["is_fulfilled"])
 
-
     def __str__(self):
-        return f"Pledge for {self.event.name} - KES {self.amount_pledged} by {self.user.username}"
+        return f"{self.name} - KES {self.amount_pledged} ({self.phone_number})"
 
 
 class MpesaPayment(models.Model):

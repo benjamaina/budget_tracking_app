@@ -11,10 +11,10 @@ import json
 import logging
 from decimal import Decimal
 from .models import (Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, 
-                     MpesaInfo, VendorPayment, ServiceProvider, VendorCashPayment)
+                     MpesaInfo, VendorPayment, ServiceProvider)
 from .serializers import (EventSerializer, BudgetItemSerializer, 
                           PledgeSerializer, ManualPaymentSerializer,
-                            MpesaInfoSerializer, VendorCashPaymentSerializer, 
+                            MpesaInfoSerializer,
                             VendorPaymentSerializer, ServiceProviderSerializer
 )
 logger = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ class PledgeViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         event_id = self.kwargs.get('event_id')
         event = Event.objects.get(id=event_id)
+        serializer.save(user=self.request.user, event=event)
         
         
 class ManualPaymentViewSet(viewsets.ModelViewSet):
@@ -66,6 +67,7 @@ class ManualPaymentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         pledge_id = self.kwargs.get('pledge_id')
         pledge = Pledge.objects.get(id=pledge_id)
+        serializer.save(user=self.request.user, pledge=pledge)
         
 class MpesaInfoView(viewsets.ModelViewSet):
     serializer_class = MpesaInfoSerializer
@@ -113,16 +115,6 @@ class ServiceProviderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
         
-
-class VendorCashPaymentViewSet(viewsets.ModelViewSet):
-    serializer_class = VendorCashPaymentSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return VendorCashPayment.objects.filter(user=self.request.user)
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
 
 # @method_decorator(csrf_exempt, name='dispatch')
 # class MpesaWebhookView(View):
