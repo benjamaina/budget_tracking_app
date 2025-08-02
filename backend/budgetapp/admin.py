@@ -11,9 +11,10 @@ from django.contrib.auth.models import User
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
     exclude = ('user',)
-    list_display = ('name',  'venue', 'event_date','total_budget', 'total_pledged', 'total_received', 'percentage_covered', 'outstanding_balance', 'is_funded')
+    list_display = ('name',  'venue', 'event_date','total_budget', 'total_pledged', 'total_received', 'percentage_covered', 'outstanding_balance', 'is_funded', 'excess_amount', 'created_on')
     readonly_fields = ('created_on',)
     search_fields = ('name', 'venue', 'user__username')
+    readonly_fields = ('total_pledged', 'total_received', 'percentage_covered', 'outstanding_balance', 'is_funded', 'excess_amount')
     list_filter = ('event_date', 'user')
 
     def total_pledged(self, obj):
@@ -37,6 +38,10 @@ class EventAdmin(admin.ModelAdmin):
             obj.user = request.user
         super().save_model(request, obj, form, change)
     
+    def excess_amount(self, obj):
+        return obj.overpaid_amount()
+    excess_amount.short_description = _('Excess Amount')
+
 
 @admin.register(BudgetItem)
 class BudgetItemAdmin(admin.ModelAdmin):
@@ -138,10 +143,10 @@ class MpesaPaymentAdmin(admin.ModelAdmin):
 @admin.register(VendorPayment)
 class VendorPaymentAdmin(admin.ModelAdmin):
     exclude = ('user',)
-    list_display = ('budget_item', 'service_provider', 'amount', 'payment_method', 'date_paid', 'confirmed')
+    list_display = ('budget_item', 'service_provider', 'amount', 'payment_method', 'date_paid','total_paid', 'confirmed')
     search_fields = ('budget_item__category', 'service_provider__name')
     list_filter = ('payment_method', 'date_paid', 'confirmed')
-    readonly_fields = ('date_paid',)
+    readonly_fields = ('date_paid','total_paid',)
     
     def save_model(self, request, obj, form, change):
         if not obj.user_id:
