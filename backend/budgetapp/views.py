@@ -1,22 +1,32 @@
 from django.shortcuts import render
 from rest_framework import viewsets, generics, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Sum
 from django.views import View
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
 from django.http import JsonResponse
+from django.contrib.auth import authenticate
+from rest_framework import serializers
 import json
+from rest_framework_simplejwt.tokens import RefreshToken
 import logging
 from decimal import Decimal
 from .models import (Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, 
-                     MpesaInfo, VendorPayment, ServiceProvider)
+                     MpesaInfo, VendorPayment, ServiceProvider, Task)
 from .serializers import (EventSerializer, BudgetItemSerializer, 
                           PledgeSerializer, ManualPaymentSerializer,
                             MpesaInfoSerializer,
-                            VendorPaymentSerializer, ServiceProviderSerializer
+                            VendorPaymentSerializer, ServiceProviderSerializer, 
+                            RegisterSerializer, ChangePasswordSerializer,TaskSerializer
 )
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.contrib.auth import update_session_auth_hash
+
+# from backend.budgetapp import serializers
+
+
+
 logger = logging.getLogger(__name__)
 
 class EventViewSet(viewsets.ModelViewSet):
@@ -29,6 +39,7 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Event.objects.filter(user=self.request.user)
+        # return Event.objects.all()
 
 
 class BudgetItemViewSet(viewsets.ModelViewSet):
@@ -37,23 +48,57 @@ class BudgetItemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
-        return BudgetItem.objects.filter(event_id=event_id, user=self.request.user)
+        print("Authenticated user:", self.request.user)
+        return BudgetItem.objects.filter(user=self.request.user)
+        # return BudgetItem.objects.all()
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-class PledgeViewSet(viewsets.ModelViewSet):
-    serializer_class = PledgeSerializer
+        try:
+            serializer.save(user=self.request.user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
+        
+class TaskViewSet(viewsets.ModelViewSet):
+    serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
-        return Pledge.objects.filter(event_id=event_id, user = self.request.user)
+        return Task.objects.filter(event_id=event_id, user=self.request.user)
 
     def perform_create(self, serializer):
         event_id = self.kwargs.get('event_id')
         event = Event.objects.get(id=event_id)
         serializer.save(user=self.request.user, event=event)
+
+class PledgeViewSet(viewsets.ModelViewSet):
+    serializer_class = PledgeSerializer
+    permission_classes = [IsAuthenticated]
+
+    # def get_queryset(self):
+    #     event_id = self.kwargs.get('event_id')
+    #     return Pledge.objects.filter(event_id=event_id, user = self.request.user)
+
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+    
+    def perform_create(self, serializer):
+        # event_id = self.kwargs.get('event_id')
+        event_id = self.request.data.get('event')
+        event = Event.objects.get(id=event_id)
+        serializer.save(user=self.request.user, event=event)
+
+    def get_queryset(self):
+        event_id = self.kwargs.get('event_id')
+        if event_id:
+            return Pledge.objects.filter(event_id=event_id, user=self.request.user)
+        else:
+            # fallback: all pledges for user, if event_id not provided
+            return Pledge.objects.filter(user=self.request.user)
+
         
         
 class ManualPaymentViewSet(viewsets.ModelViewSet):
@@ -177,3 +222,122 @@ class DashboardMetricsView(generics.RetrieveAPIView):
             'total_budget': total_budget,
             'percent_funded': (total_paid / total_budget * 100) if total_budget else 0
         })
+
+
+class LogoutView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            refresh_token = request.data["refresh"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({"detail": "Successfully logged out."}, status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            logger.error(f"Logout error: {e}")
+            return Response({"detail": "Logout failed."}, status=status.HTTP_400_BAD_REQUEST)
+
+class LoginView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            username = request.data.get("username")
+            password = request.data.get("password")
+            if not username or not password:
+                return Response({"detail": "Username and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+            user = authenticate(username=username, password=password)
+            if user is not None:
+                refresh = RefreshToken.for_user(user)
+                return Response({
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
+                    "user_id": user.id,
+                    "username": user.username
+                })
+            else:
+                return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception as e:
+            logger.error(f"Login error: {e}")
+            return Response({"detail": "Login failed."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class RegisterView(generics.CreateAPIView):
+    serializer_class = RegisterSerializer
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+
+            # Issue JWT token immediately
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                "user_id": user.id,
+                "username": user.username,
+                "refresh": str(refresh),
+                "access": str(refresh.access_token)
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    serializer_class = RegisterSerializer
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+
+            # Issue JWT token immediately
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                "user_id": user.id,
+                "username": user.username,
+                "refresh": str(refresh),
+                "access": str(refresh.access_token)
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+
+
+
+class ChangePasswordView(generics.UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer
+
+    def get_object(self):
+        return self.request.user
+
+    def update(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        user = self.get_object()
+        
+        # Check old password 
+        if not user.check_password(serializer.validated_data['old_password']):
+            return Response(
+                {"old_password": ["Wrong password."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Set new password
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+
+        
+        # Update session to prevent logout
+        update_session_auth_hash(request, user)
+        
+        return Response(
+            {"detail": "Password updated successfully."},
+            status=status.HTTP_200_OK
+        )

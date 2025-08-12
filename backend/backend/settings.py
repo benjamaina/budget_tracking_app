@@ -62,7 +62,9 @@ INSTALLED_APPS = [
     'budgetapp',  # Your budget management app
     'rest_framework.authtoken',  # For token authentication
     'corsheaders',  # For handling CORS
+    'rest_framework_simplejwt.token_blacklist',
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

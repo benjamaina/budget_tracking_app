@@ -1,103 +1,251 @@
 from rest_framework import serializers
-from .models import Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, Task, MpesaInfo, VendorPayment, ServiceProvider
-from django.utils import timezone
+from .models import (
+    Event, BudgetItem, Pledge, MpesaPayment, 
+    ManualPayment, Task, MpesaInfo, VendorPayment, ServiceProvider
+)
 from django.contrib.auth.models import User
+from django.db.models import Sum
+from django.contrib.auth.password_validation import validate_password
 
+
+# Mpesa Info
 class MpesaInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = MpesaInfo
-        fields = ['id', 'paybill_number', 'till_number', 'account_name',  'user']
+        fields = ['id', 'paybill_number', 'till_number', 'account_name', 'user']
         read_only_fields = ['user']
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
-    def update(self, instance, validated_data):
-        return super().update(instance, validated_data)
 
+# Event
 class EventSerializer(serializers.ModelSerializer):
+    total_received = serializers.SerializerMethodField()
+    total_pledged = serializers.SerializerMethodField()
+    percentage_covered = serializers.SerializerMethodField()
+    outstanding_balance = serializers.SerializerMethodField()
+    overpaid_amount = serializers.SerializerMethodField()
+
     class Meta:
         model = Event
-        fields = ["id", "name", "description", "date", "time", "created_by", "venue", "total_budget", 'user']
-        read_only_fields = ["id", "created_by", "user"]
+        fields = [
+            "id", "name", "description", "venue", "total_budget", "event_date",
+            "user", "is_funded", "total_received", "total_pledged",
+            "percentage_covered", "outstanding_balance", "overpaid_amount"
+        ]
+        read_only_fields = [
+            "id", "user", "is_funded",
+            "total_received", "total_pledged", "percentage_covered", 
+            "outstanding_balance", "overpaid_amount"
+        ]
 
+    def get_total_received(self, obj):
+        return obj.total_received()
+
+    def get_total_pledged(self, obj):
+        return obj.total_pledged()
+
+    def get_percentage_covered(self, obj):
+        return obj.percentage_covered()
+
+    def get_outstanding_balance(self, obj):
+        return obj.outstanding_balance()
+
+    def get_overpaid_amount(self, obj):
+        return obj.overpaid_amount()
 
     def create(self, validated_data):
-        # Automatically set the created_by field to the current user
-        request = self.context.get('request')
-        validated_data['user'] = request.user
-        validated_data['created_by'] = self.context['request'].user
-        # Ensure the user is set to the current user
+        validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
 
+# Budget Item
 class BudgetItemSerializer(serializers.ModelSerializer):
+    total_vendor_payments = serializers.SerializerMethodField()
+    remaining_budget = serializers.SerializerMethodField()
+    is_fully_paid = serializers.SerializerMethodField()
+
     class Meta:
         model = BudgetItem
-        fields = ['id', 'event', 'category', 'estimated_budget', 'is_funded']
+        fields = [
+            'id', 'event', 'category', 'estimated_budget', 'is_funded',
+            'total_vendor_payments', 'remaining_budget', 'is_fully_paid'
+        ]
+        read_only_fields = ['id', 'total_vendor_payments', 'remaining_budget', 'is_fully_paid']
 
+    def get_total_vendor_payments(self, obj):
+        return obj.total_vendor_payments
+
+    def get_remaining_budget(self, obj):
+        return obj.remaining_budget
+
+    def get_is_fully_paid(self, obj):
+        return obj.is_fully_paid
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+# Pledge
 class PledgeSerializer(serializers.ModelSerializer):
+    balance = serializers.SerializerMethodField()
+
     class Meta:
         model = Pledge
-        fields = ['id', 'event',  'amount_pledged', 'is_fulfilled', 'name', 'phone_number']
-        read_only_fields = ['id']
-        
-    def validate(self, attrs):
-        if attrs.get('amount_pledged') <= 0:
-            raise serializers.ValidationError("Amount pledged must be greater than zero.")
-        return attrs
-        
-        
+        fields = [
+            'id', 'event', 'amount_pledged', 'is_fulfilled',
+            'name', 'phone_number', 'user', 'total_paid', 'balance'
+        ]
+        read_only_fields = ['id', 'is_fulfilled', 'user', 'total_paid', 'balance']
+
+    def get_balance(self, obj):
+        return obj.balance()
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
     def create(self, validated_data):
-        request = self.context.get('request')
-        user = request.user
-        validated_data['user'] = user
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
 
-class ManualPaymentSerializer(serializers.ModelSerializer):
+    def validate(self, data):
+        event = data.get('event')
+        amount_pledged = data.get('amount_pledged')
+
+        # Sum of pledges for this event excluding current pledge if updating
+        total_pledged = Pledge.objects.filter(event=event).aggregate(
+            total=Sum('amount_pledged')
+        )['total'] or 0
+
+        # If updating, subtract existing pledge amount to avoid double counting
+        if self.instance:
+            total_pledged -= self.instance.amount_pledged
+
+        if amount_pledged + total_pledged > event.total_budget:
+            raise serializers.ValidationError("Pledge amount exceeds event's total budget.")
+        
+        if amount_pledged <= 0:
+            raise serializers.ValidationError("Amount pledged must be greater than zero.")
+        return data
+
+# Mpesa Payment
+class MpesaPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = MpesaPayment
-        fields = ['phone_number', 'amount', 'transaction_id', 'timestamp', 'name']
-        read_only_fields = ['timestamp', 'transaction_id', 'phone_number', 'name']
+        fields = ['id', 'event', 'pledge', 'amount', 'transaction_id', 'timestamp', 'user']
+        read_only_fields = ['id', 'timestamp', 'user']
 
     def create(self, validated_data):
-        phone = validated_data.get('phone_number')
-        pledge = Pledge.objects.filter(phone_number=phone).order_by('-id').first()
-        validated_data['pledge'] = pledge
+        validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
+
+# Manual Payment
+class ManualPaymentSerializer(serializers.ModelSerializer):
+    phone_number = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ManualPayment
+        fields = ['id', 'event', 'pledge', 'amount', 'date', 'user', 'phone_number', 'name']
+        read_only_fields = ['id', 'date', 'user', 'phone_number', 'name']
+
+    def get_phone_number(self, obj):
+        return obj.pledge.phone_number if obj.pledge else None
+
+    def get_name(self, obj):
+        return obj.pledge.name if obj.pledge else None
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+# Task
 class TaskSerializer(serializers.ModelSerializer):
+    balance = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
-        fields = ['id', 'title', 'description', 'allocated_amount', 'amount_paid', 'due_date', 'completed']
-        read_only_fields = ['id']
+        fields = ['id', 'budget_item', 'title', 'description', 'allocated_amount', 'amount_paid', 'balance', 'user']
+        read_only_fields = ['id', 'user', 'balance']
+
+    def get_balance(self, obj):
+        return obj.balance
 
     def create(self, validated_data):
-        request = self.context.get('request')
-        validated_data['user'] = request.user
+        validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
-    
+
+
+# Vendor Payment
 class VendorPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = VendorPayment
-        fields = ['id', 'vendor', 'amount', 'date', 'description']
-        read_only_fields = ['id']
+        fields = [
+            'id', 'budget_item', 'service_provider', 'payment_method',
+            'transaction_code', 'amount', 'confirmed', 'date_paid', 'user'
+        ]
+        read_only_fields = ['id', 'date_paid', 'user']
 
     def create(self, validated_data):
-        request = self.context.get('request')
-        validated_data['user'] = request.user
+        validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
-    
+
+
+# Service Provider
 class ServiceProviderSerializer(serializers.ModelSerializer):
+    total_received = serializers.SerializerMethodField()
+    balance_due = serializers.SerializerMethodField()
+
     class Meta:
         model = ServiceProvider
-        fields = ['id', 'name', 'contact_info']
-        read_only_fields = ['id']
+        fields = [
+            'id', 'budget_item', 'service_type', 'name', 'phone_number',
+            'email', 'amount_charged', 'total_received', 'balance_due', 'user'
+        ]
+        read_only_fields = ['id', 'total_received', 'balance_due', 'user']
+
+    def get_total_received(self, obj):
+        return obj.total_received
+
+    def get_balance_due(self, obj):
+        return obj.balance_due
 
     def create(self, validated_data):
-        request = self.context.get('request')
-        validated_data['user'] = request.user
+        validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
 
+# User Registration
+class RegisterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password']
+        extra_kwargs = {'password': {'write_only': True}}
+
+    def create(self, validated_data):
+        return User.objects.create_user(**validated_data)
+
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, min_length=6)
+
+    def validate_old_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Old password is incorrect")
+        return value
+    
+    
+    def validate_new_password(self, value):
+        user = self.context['request'].user
+        if  user.check_password(value):
+            raise serializers.ValidationError("New password cannot be the same as the old password")
+        return value
