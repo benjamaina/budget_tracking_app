@@ -1,12 +1,24 @@
 from rest_framework import serializers
 from .models import (
     Event, BudgetItem, Pledge, MpesaPayment, 
-    ManualPayment, Task, MpesaInfo, VendorPayment, ServiceProvider
+    ManualPayment, Task, MpesaInfo, VendorPayment, ServiceProvider, UserSettings
 )
 from django.contrib.auth.models import User
 from django.db.models import Sum
 from django.contrib.auth.password_validation import validate_password
+from rest_framework import serializers
 
+class UserSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserSettings
+        fields = ['id','preferred_currency', 'mpesa_paybill_number', 'mpesa_till_number',
+                  'mpesa_account_name', 'user', 'mpesa_phone_number',
+                  'preferred_currency', 'notifications_enabled ']
+        read_only_fields = ['id', 'user', 'notifications_enabled ']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
 # Mpesa Info
 class MpesaInfoSerializer(serializers.ModelSerializer):
@@ -73,6 +85,9 @@ class BudgetItemSerializer(serializers.ModelSerializer):
             'id', 'event', 'category', 'estimated_budget', 'is_funded',
             'total_vendor_payments', 'remaining_budget', 'is_fully_paid'
         ]
+        extra_kwargs = {
+            'event': {'required': True}
+        }
         read_only_fields = ['id', 'total_vendor_payments', 'remaining_budget', 'is_fully_paid']
 
     def get_total_vendor_payments(self, obj):
@@ -161,6 +176,8 @@ class ManualPaymentSerializer(serializers.ModelSerializer):
         return obj.pledge.name if obj.pledge else None
 
     def create(self, validated_data):
+        # show data being saved by the user
+        print(f"Saving ManualPayment: {validated_data} by user {self.context['request'].user}")
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
@@ -249,3 +266,8 @@ class ChangePasswordSerializer(serializers.Serializer):
         if  user.check_password(value):
             raise serializers.ValidationError("New password cannot be the same as the old password")
         return value
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)

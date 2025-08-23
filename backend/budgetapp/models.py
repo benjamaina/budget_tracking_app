@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -6,7 +7,23 @@ from django.db.models import Sum
 from django.db import transaction
 import logging
 
+
 logger = logging.getLogger(__name__)
+
+class UserSettings(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="settings")
+    preferred_currency = models.CharField(max_length=10, default="KES")
+    notifications_enabled = models.BooleanField(default=True)
+
+    # Mpesa settings
+    mpesa_paybill_number = models.CharField(max_length=20, blank=True, null=True)
+    mpesa_till_number = models.CharField(max_length=20, blank=True, null=True)
+    mpesa_account_name = models.CharField(max_length=50, blank=True, null=True)
+    mpesa_phone_number = models.CharField(max_length=15, blank=True, null=True, db_index=True)
+
+
+    def __str__(self):
+        return f"Settings for {self.user.username}"
 
 
 class Event(models.Model):
@@ -17,7 +34,6 @@ class Event(models.Model):
     total_budget = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        default=0,
         db_index=True,
         help_text="Total budget allocated for the event"
     )
@@ -66,15 +82,15 @@ class Event(models.Model):
 
     def budget_summary(self):
         if not self.pk:
-            return {
-                "total_budget": 0,
-                "total_allocated": 0,
-                "total_spent": 0
-            }
+            return {'total_budget': 0, 'total_spent': 0}
+        
+        summary = self.budget_items.aggregate(
+            total_budget=Sum('estimated_budget'),
+            total_spent=Sum('payments__amount')
+        )
         return {
-            "total_budget": self.budget_items.aggregate(total=Sum('estimated_budget'))['total'] or 0,
-            "total_allocated": self.budget_items.aggregate(total=Sum('estimated_budget'))['total'] or 0,
-            "total_spent": self.budget_items.aggregate(total=Sum('payments__amount'))['total'] or 0,
+            'total_budget': summary['total_budget'] or 0,
+            'total_spent': summary['total_spent'] or 0,
         }
 
     @property
@@ -159,8 +175,13 @@ class ServiceProvider(models.Model):
         return max(self.amount_charged - self.total_received, 0)
 
     def clean(self):
-        if self.amount_charged > BudgetItem.objects.filter(pk=self.budget_item.pk).first().estimated_budget:
+        if self.budget_item and self.amount_charged > self.budget_item.estimated_budget:
             raise ValidationError("Amount charged cannot exceed budget item estimated budget.")
+        # prevent VendorPayments > BudgetItem.estimated_budget
+        if self.amount_charged < 0:
+            raise ValidationError("Amount charged cannot be negative.")
+        if not self.name:
+            raise ValidationError("Service provider name cannot be empty.")
         
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -185,7 +206,8 @@ class VendorPayment(models.Model):
 
     @property
     def total_paid(self):
-        return self.budget_item.payments.aggregate(total=models.Sum('amount'))['total'] 
+        return self.budget_item.total_vendor_payments
+
     
 
     def clean(self):
@@ -195,6 +217,8 @@ class VendorPayment(models.Model):
             raise ValidationError("Budget item is required.")
         if self.amount is None:
             raise ValidationError("Payment amount is required.")
+       
+        
 
         # Exclude this instance if updating
         existing_payments = self.budget_item.payments.exclude(pk=self.pk)
@@ -247,7 +271,6 @@ class Task(models.Model):
 
     def save(self, *args, **kwargs):
         self.full_clean()  # Ensures validation is applied
-        self.completed = self.amount_paid >= self.allocated_amount
         super().save(*args, **kwargs)
 
     @property
@@ -340,7 +363,10 @@ class MpesaInfo(models.Model):
     paybill_number = models.CharField(max_length=20, blank=True, null=True)
     till_number = models.CharField(max_length=20, blank=True, null=True)
     account_name = models.CharField(max_length=50, blank=True, null=True)
+    phone_number = models.CharField(max_length=15, blank=True, null=True, db_index=True)
     
+
+    @staticmethod
     def auto_assign_pledge(payment):
         try:
            matched_pledge = Pledge.objects.filter(phone_number=payment.phone_number).order_by('-id').first()

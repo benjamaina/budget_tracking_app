@@ -22,13 +22,11 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-
-def welcome(request):
-    return HttpResponse("Welcome to the Budget Management API")
+def health_check(request):
+    return HttpResponse("OK", content_type="text/plain")
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', welcome, name='welcome'),
     path('api/', include('budgetapp.urls')),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

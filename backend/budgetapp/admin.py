@@ -123,6 +123,8 @@ class ManualPaymentAdmin(admin.ModelAdmin):
 
 
     def save_model(self, request, obj, form, change):
+        # see the data is being saved by the user
+        print(f"Saving ManualPayment: {obj} by user {request.user}")
         if not obj.user_id:
             obj.user = request.user
         super().save_model(request, obj, form, change)

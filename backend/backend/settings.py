@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 import os
 from decouple import config, Csv
@@ -29,9 +30,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='your-default-secret-key')
 
 
-# DEBUG = config('DEBUG', default=False, cast=bool)
-# ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv)
-
 # res framework Token Authentication backends
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -42,14 +40,27 @@ REST_FRAMEWORK = {
     ],
 }
 
-# CORS settings
-# CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000', cast=Csv())
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']  # Change this to your domain in production
+ALLOWED_HOSTS = ['*'] 
 
-# Application definition
+CORS_ALLOWED_ORIGINS = [
+    "https://2aea5419-4b23-4a69-87e0-5b36067c30f1.lovableproject.com",
+    "http://localhost:8080",
+]
+
+# Or for development, you can use:
+CORS_ALLOW_ALL_ORIGINS = True
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,  # important if you want to replace old refresh tokens
+    'BLACKLIST_AFTER_ROTATION': True
+}
+
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -74,6 +85,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    'budgetapp.middleware.NoCacheMiddleware',  # Custom middleware to disable caching
 ]
 
 ROOT_URLCONF = 'backend.urls'

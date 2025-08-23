@@ -2,32 +2,50 @@ from django.shortcuts import render
 from rest_framework import viewsets, generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db.models import Sum
 from django.views import View
 from django.http import JsonResponse
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 import json
+from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 import logging
 from decimal import Decimal
 from .models import (Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, 
-                     MpesaInfo, VendorPayment, ServiceProvider, Task)
+                     MpesaInfo, VendorPayment, ServiceProvider, Task, UserSettings)
 from .serializers import (EventSerializer, BudgetItemSerializer, 
                           PledgeSerializer, ManualPaymentSerializer,
                             MpesaInfoSerializer,
                             VendorPaymentSerializer, ServiceProviderSerializer, 
-                            RegisterSerializer, ChangePasswordSerializer,TaskSerializer
+                            RegisterSerializer, ChangePasswordSerializer,TaskSerializer,LoginSerializer, UserSettingsSerializer
 )
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.contrib.auth import update_session_auth_hash
+from datetime import date
+from django.views.generic import TemplateView
+from django.db.models import Sum, Count, Q
+from django.utils import timezone
+from datetime import timedelta
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404
 
-# from backend.budgetapp import serializers
+
 
 
 
 logger = logging.getLogger(__name__)
+
+
+
+class UserSettingsView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserSettingsSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        settings, created = UserSettings.objects.get_or_create(user=self.request.user)
+        return settings
 
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
@@ -150,6 +168,7 @@ class VendorPaymentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+
 class ServiceProviderViewSet(viewsets.ModelViewSet):
     serializer_class = ServiceProviderSerializer
     permission_classes = [IsAuthenticated]
@@ -161,67 +180,6 @@ class ServiceProviderViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
         
 
-# @method_decorator(csrf_exempt, name='dispatch')
-# class MpesaWebhookView(View):
-#     def post(self, request, *args, **kwargs):
-#         try:
-#             data = json.loads(request.body)
-#             transaction_id = data.get('transaction_id')
-#             amount = data.get('amount')
-#             phone_number = data.get('phone_number')
-#             paybill = data.get('paybill')  # Add this in payload!
-
-#             if not all([transaction_id, amount, phone_number, paybill]):
-#                 return JsonResponse({"error": "Missing required fields"}, status=400)
-
-#             if MpesaPayment.objects.filter(transaction_id=transaction_id).exists():
-#                 return JsonResponse({"message": "Transaction already recorded"}, status=200)
-
-#             mpesa_info = MpesaInfo.objects.filter(paybill_number=paybill).first()
-#             if not mpesa_info:
-#                 return JsonResponse({"error": "No user found for that paybill"}, status=404)
-
-#             user = mpesa_info.user
-
-#             donor, _ = Donor.objects.get_or_create(user=user, phone_number=phone_number, defaults={"name": "Unknown Donor"})
-
-#             pledge = Pledge.objects.filter(user=user, donor=donor).order_by('-id').first()
-
-#             payment = MpesaPayment.objects.create(
-#                 user=user,
-#                 donor=donor,
-#                 pledge=pledge,
-#                 amount=Decimal(amount),
-#                 transaction_id=transaction_id
-#             )
-
-#             return JsonResponse({"message": "Payment recorded", "payment_id": payment.id}, status=201)
-
-#         except json.JSONDecodeError:
-#             return JsonResponse({"error": "Invalid JSON"}, status=400)
-#         except Exception as e:
-#             print(f"Webhook error: {e}")
-#             return JsonResponse({"error": "Internal server error"}, status=500)
-
-
-class DashboardMetricsView(generics.RetrieveAPIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        event_id = kwargs['event_id']
-        pledges = Pledge.objects.filter(event_id=event_id)
-        items = BudgetItem.objects.filter(event_id=event_id)
-
-        total_pledged = pledges.aggregate(total=Sum('amount_pledged'))['total'] or 0
-        total_paid = sum(p.total_paid() for p in pledges)
-        total_budget = items.aggregate(total=Sum('estimated_budget'))['total'] or 0
-
-        return Response({
-            'total_pledged': total_pledged,
-            'total_paid': total_paid,
-            'total_budget': total_budget,
-            'percent_funded': (total_paid / total_budget * 100) if total_budget else 0
-        })
 
 
 class LogoutView(generics.GenericAPIView):
@@ -239,8 +197,12 @@ class LogoutView(generics.GenericAPIView):
 
 class LoginView(generics.GenericAPIView):
     permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
+    # authentication_classes = []  # Disable authentication for this view
 
     def post(self, request, *args, **kwargs):
+        print("Request method:", request.method)
+        print("Request data:", request.data) 
         try:
             username = request.data.get("username")
             password = request.data.get("password")
@@ -341,3 +303,58 @@ class ChangePasswordView(generics.UpdateAPIView):
             {"detail": "Password updated successfully."},
             status=status.HTTP_200_OK
         )
+    
+
+
+
+class DashboardAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk=None):
+        user = request.user
+        
+        if pk:
+            # Event-specific dashboard
+            try:
+                event = Event.objects.get(id=pk, user=user)
+                return Response(self._get_event_data(event))
+            except Event.DoesNotExist:
+                return Response({"error": "Event not found"}, status=404)
+        else:
+            # General dashboard
+            return Response(self._get_general_data(user))
+    
+    def _get_event_data(self, event):
+        """Data for a single event dashboard"""
+        return {
+            'event': EventSerializer(event).data,
+            'metrics': {
+                'total_pledged': event.total_pledged(),
+                'total_received': event.total_received(),
+                'percentage_covered': event.percentage_covered(),
+                'outstanding_balance': event.outstanding_balance(),
+            },
+            'pledges': PledgeSerializer(event.pledges.all(), many=True).data,
+            'budget_items': BudgetItemSerializer(event.budget_items.all(), many=True).data,
+            'tasks': TaskSerializer(Task.objects.filter(budget_item__event=event), many=True).data,
+            'budget_summary': event.budget_summary(),
+        }
+    
+    def _get_general_data(self, user):
+        """Data for general dashboard"""
+        now = timezone.now()
+        events = Event.objects.filter(user=user)
+        
+        return {
+            'summary': {
+                'total_events': events.count(),
+                'active_events': events.filter(event_date__gte=now.date()).count(),
+                'funded_events': events.filter(is_funded=True).count(),
+                'total_budget': events.aggregate(total=Sum('total_budget'))['total'] or 0,
+            },
+            'upcoming_events': EventSerializer(
+                events.filter(event_date__gte=now.date()).order_by('event_date')[:5],
+                many=True
+            ).data,
+        }
