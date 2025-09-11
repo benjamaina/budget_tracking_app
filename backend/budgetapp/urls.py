@@ -6,11 +6,10 @@ from .views import (EventViewSet, BudgetItemViewSet, PledgeViewSet,
                      ManualPaymentViewSet,ServiceProviderViewSet, TaskViewSet, UserSettingsView, MpesaPaymentViewSet
                      , RecentActivityView
 )
-# router = DefaultRouter()
-# router.register(r'events', EventViewSet, basename='event')
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
+
 
 urlpatterns = [
-    # path('', include(router.urls)),
     path('budget-items/', BudgetItemViewSet.as_view({'get': 'list', 'post': 'create'}), name='budget-item-list'),
     path('budget-items/<int:pk>/', BudgetItemViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='budget-item-detail'),
     path('pledges/', PledgeViewSet.as_view({'get': 'list', 'post': 'create'}), name='pledge-list'),
@@ -38,7 +37,8 @@ urlpatterns = [
     path('mpesa-payments/', MpesaPaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='mpesa-payment-list'),
     path('mpesa-payments/<int:pk>/', MpesaPaymentViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='mpesa-payment-detail'),
     path('recent-activities/', RecentActivityView.as_view(), name='recent-activities'),
-    
-     
+  
     
 ]
+
+
