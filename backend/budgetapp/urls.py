@@ -3,16 +3,17 @@ from rest_framework.routers import DefaultRouter
 from .views import (EventViewSet, BudgetItemViewSet, PledgeViewSet,
                      DashboardAPIView, MpesaInfoView, LoginView, 
                      LogoutView, RegisterView, ChangePasswordView,VendorPaymentViewSet, 
-                     ManualPaymentViewSet,ServiceProviderViewSet, TaskViewSet, UserSettingsView
+                     ManualPaymentViewSet,ServiceProviderViewSet, TaskViewSet, UserSettingsView, MpesaPaymentViewSet
 )
-router = DefaultRouter()
-router.register(r'events', EventViewSet, basename='event')
+# router = DefaultRouter()
+# router.register(r'events', EventViewSet, basename='event')
 
 urlpatterns = [
-    path('', include(router.urls)),
+    # path('', include(router.urls)),
     path('budget-items/', BudgetItemViewSet.as_view({'get': 'list', 'post': 'create'}), name='budget-item-list'),
     path('budget-items/<int:pk>/', BudgetItemViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='budget-item-detail'),
     path('pledges/', PledgeViewSet.as_view({'get': 'list', 'post': 'create'}), name='pledge-list'),
+    path('manual-payments/', ManualPaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='manual-payment-list'),
     path('pledges/<int:pledge_id>/manual-payments/', ManualPaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='pledge-manual-payment-list'),
     path('pledges/<int:pk>/', PledgeViewSet.as_view({'get': 'retrieve', 'put': 'update',    'delete': 'destroy'}), name='pledge-detail'),
     path('events/', EventViewSet.as_view({'get': 'list', 'post': 'create'}), name='event-list'),
@@ -27,14 +28,15 @@ urlpatterns = [
     path('service-providers/', ServiceProviderViewSet.as_view({'get': 'list', 'post': 'create'}), name='service-provider-list'),
     path('service-providers/<int:pk>/', ServiceProviderViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='service-provider-detail'),
     path('vendor-payments/', VendorPaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='vendorpayment-list'),
+    path('vendor-payments/<int:pk>/', VendorPaymentViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='vendorpayment-detail'),
     path('dashboard/', DashboardAPIView.as_view(), name='general-dashboard'),
     path('dashboard/<int:pk>/', DashboardAPIView.as_view(), name='event-dashboard'),
     path('tasks/', TaskViewSet.as_view({'get': 'list', 'post': 'create'}), name='task-list'),
     path('tasks/<int:pk>/', TaskViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='task-detail'),
     path('user-settings/', UserSettingsView.as_view(), name='user-settings'),
+    path('mpesa-payments/', MpesaPaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='mpesa-payment-list'),
+    path('mpesa-payments/<int:pk>/', MpesaPaymentViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='mpesa-payment-detail'),
     
      
     
 ]
-
-

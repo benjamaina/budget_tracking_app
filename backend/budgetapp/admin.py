@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (Event, BudgetItem, Pledge, MpesaPayment, ManualPayment, 
-                     MpesaInfo, Task, VendorPayment, ServiceProvider)
+                     MpesaInfo, Task, VendorPayment, ServiceProvider, UserSettings)
 from django.db.models import Sum
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
@@ -180,3 +180,16 @@ class ServiceProviderAdmin(admin.ModelAdmin):
     def balance_due(self, obj):
         return obj.balance_due
     balance_due.short_description = _('Balance Due')
+
+
+@admin.register(UserSettings)
+class UserSettingsAdmin(admin.ModelAdmin):
+    exclude = ('user',)
+    list_display = ('user', 'preferred_currency', 'notifications_enabled')
+    search_fields = ('user__username', 'currency')
+    list_filter = ('preferred_currency', 'notifications_enabled')
+
+    def save_model(self, request, obj, form, change):
+        if not obj.user_id:
+            obj.user = request.user
+        super().save_model(request, obj, form, change)

@@ -54,7 +54,7 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_ALL_ORIGINS = True
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,  # important if you want to replace old refresh tokens
     'BLACKLIST_AFTER_ROTATION': True
@@ -124,6 +124,47 @@ DATABASES = {
         'PORT': config('DB_PORT', default='5432'),
     }
 }
+
+# settings.py (snippets)
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+    }
+}
+
+
+# Pagination settings
+REST_FRAMEWORK = {
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 10,  # number of items per page
+}
+# Throttling settings
+
+REST_FRAMEWORK = {
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+
+        # global defaults
+        "anon": "60/min",         # anonymous clients
+        "user": "10000/day",      # authenticated users overall
+        "user": "1000/day",   # example for default UserRateThrottle
+        "event": None,       # disable throttling for this scope during load testing
+        # named scopes you might use from views/custom throttles
+        "login": "5/min",                 # login attempts
+        "user_write": "30/min",           # write-heavy actions per user
+        "event": "120/min",               # generic event-level scope
+        "event_write": "20/min",          # writes on event resources
+        "pledge_per_event": "10/min",     # per-user-per-event pledge limits
+        "mpesa_callback": "1000/min",     # high limit for mpesa callbacks (or whitelist)
+    },
+}
+
 
 
 # Password validation

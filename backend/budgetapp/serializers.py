@@ -201,6 +201,8 @@ class TaskSerializer(serializers.ModelSerializer):
 
 # Vendor Payment
 class VendorPaymentSerializer(serializers.ModelSerializer):
+
+    transaction_code = serializers.CharField(required=False, allow_blank=True)
     class Meta:
         model = VendorPayment
         fields = [
@@ -208,10 +210,12 @@ class VendorPaymentSerializer(serializers.ModelSerializer):
             'transaction_code', 'amount', 'confirmed', 'date_paid', 'user'
         ]
         read_only_fields = ['id', 'date_paid', 'user']
+        
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+
 
 
 # Service Provider
