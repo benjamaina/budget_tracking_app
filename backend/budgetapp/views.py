@@ -1,17 +1,13 @@
-from django.shortcuts import render
+# views.py
 from rest_framework import viewsets, generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.views import View
-from django.http import JsonResponse
 from django.contrib.auth import authenticate
 from rest_framework import serializers
-import json
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 import logging
-from decimal import Decimal
 from .models import (
     Event, BudgetItem, Pledge, MpesaPayment, ManualPayment,
     MpesaInfo, VendorPayment, ServiceProvider, Task, UserSettings
@@ -25,12 +21,10 @@ from .serializers import (
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.contrib.auth import update_session_auth_hash
 from datetime import date, timedelta
-from django.views.generic import TemplateView
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum
 from django.utils import timezone
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +148,7 @@ class BudgetItemViewSet(viewsets.ModelViewSet):
     Ensures validation errors are properly raised as DRF ValidationErrors.
     """
     serializer_class = BudgetItemSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
 
@@ -177,7 +171,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     CRUD operations for tasks linked to budget items and events.
     """
     serializer_class = TaskSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
 
@@ -196,7 +190,7 @@ class PledgeViewSet(viewsets.ModelViewSet):
     CRUD operations for pledges towards events.
     """
     serializer_class = PledgeSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
     throttle_classes = [EventScopedThrottle, UserWriteThrottle]
@@ -225,7 +219,7 @@ class MpesaPaymentViewSet(viewsets.ModelViewSet):
     CRUD for M-Pesa payments made by users.
     """
     serializer_class = MpesaPaymentSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
 
@@ -241,7 +235,7 @@ class ManualPaymentViewSet(viewsets.ModelViewSet):
     CRUD for manual (non-M-Pesa) payments linked to pledges.
     """
     serializer_class = ManualPaymentSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
 
@@ -263,7 +257,7 @@ class MpesaInfoView(viewsets.ModelViewSet):
     Supports GET and POST for retrieval and updates.
     """
     serializer_class = MpesaInfoSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
 
@@ -291,7 +285,7 @@ class VendorPaymentViewSet(viewsets.ModelViewSet):
     Manage payments to service providers for budget items.
     """
     serializer_class = VendorPaymentSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
 
@@ -307,7 +301,7 @@ class ServiceProviderViewSet(viewsets.ModelViewSet):
     Manage service providers linked to budget items.
     """
     serializer_class = ServiceProviderSerializer
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = EventPagination
 
@@ -393,7 +387,7 @@ class ChangePasswordView(generics.UpdateAPIView):
     Allow authenticated users to change their password.
     Requires old password for validation.
     """
-    uthentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     serializer_class = ChangePasswordSerializer
 
@@ -473,3 +467,80 @@ class DashboardAPIView(APIView):
             ).data,
         }
         # Additional metrics can be added here as needed
+
+
+class RecentActivityView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    # candidate timestamp field names (extend if your models use other names)
+    TIMESTAMP_CANDIDATES = [
+        "created_at", "created_on", "timestamp", "date_created", "created",
+        "created_datetime", "created_date", "added", "time_created",
+    ]
+
+    def _get_ts_field(self, model):
+        """Return the first timestamp-like field name present on the model, or None."""
+        field_names = {f.name for f in model._meta.get_fields()}
+        for cand in self.TIMESTAMP_CANDIDATES:
+            if cand in field_names:
+                return cand
+        return None
+
+    def _serialize_items(self, queryset, ts_field, kind, extra_fields):
+        """
+        Build a flattened list of dicts from queryset.
+        `extra_fields` is list of model attribute names to include (e.g. ['name'] or ['amount_pledged']).
+        Each item will have: type, id, created (ISO string), plus extra fields.
+        """
+        items = []
+        for obj in queryset:
+            ts_val = getattr(obj, ts_field) if ts_field else None
+            # Normalize timestamp to ISO string; fallback to epoch-like string so sorting works.
+            if hasattr(ts_val, "isoformat"):
+                created = ts_val.isoformat()
+            elif ts_val is None:
+                created = "1970-01-01T00:00:00"
+            else:
+                created = str(ts_val)
+            item = {"type": kind, "id": obj.id, "created": created}
+            for f in extra_fields:
+                item[f] = getattr(obj, f, None)
+            items.append(item)
+        return items
+
+    def get(self, request):
+        user = request.user
+        cache_key = f"recent_activity:{user.id}"
+        data = cache.get(cache_key)
+        if data:
+            return Response(data)
+
+        # detect timestamp field per model
+        event_ts = self._get_ts_field(Event)
+        pledge_ts = self._get_ts_field(Pledge)
+        payment_ts = self._get_ts_field(MpesaPayment)
+
+        # order by detected timestamp or fallback to id
+        event_order = f"-{event_ts}" if event_ts else "-id"
+        pledge_order = f"-{pledge_ts}" if pledge_ts else "-id"
+        payment_order = f"-{payment_ts}" if payment_ts else "-id"
+
+        # fetch recent items (adjust slice sizes as desired)
+        events_qs = Event.objects.filter(user=user).order_by(event_order)[:5]
+        pledges_qs = Pledge.objects.filter(user=user).order_by(pledge_order)[:5]
+        payments_qs = MpesaPayment.objects.filter(user=user).order_by(payment_order)[:5]
+
+        activity = []
+        # include 'name' for events, 'amount_pledged' for pledges (your model uses that), 'amount' for payments
+        activity += self._serialize_items(events_qs, event_ts, "event", ["name"])
+        activity += self._serialize_items(pledges_qs, pledge_ts, "pledge", ["amount_pledged"])
+        activity += self._serialize_items(payments_qs, payment_ts, "payment", ["amount"])
+
+        # sort by the ISO 'created' string descending and limit total items
+        activity.sort(key=lambda x: x.get("created", "1970-01-01T00:00:00"), reverse=True)
+        data = activity[:10]
+
+        # cache for short period
+        cache.set(cache_key, data, 30)
+        return Response(data)

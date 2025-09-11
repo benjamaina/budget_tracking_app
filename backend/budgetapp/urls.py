@@ -4,6 +4,7 @@ from .views import (EventViewSet, BudgetItemViewSet, PledgeViewSet,
                      DashboardAPIView, MpesaInfoView, LoginView, 
                      LogoutView, RegisterView, ChangePasswordView,VendorPaymentViewSet, 
                      ManualPaymentViewSet,ServiceProviderViewSet, TaskViewSet, UserSettingsView, MpesaPaymentViewSet
+                     , RecentActivityView
 )
 # router = DefaultRouter()
 # router.register(r'events', EventViewSet, basename='event')
@@ -36,6 +37,7 @@ urlpatterns = [
     path('user-settings/', UserSettingsView.as_view(), name='user-settings'),
     path('mpesa-payments/', MpesaPaymentViewSet.as_view({'get': 'list', 'post': 'create'}), name='mpesa-payment-list'),
     path('mpesa-payments/<int:pk>/', MpesaPaymentViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}), name='mpesa-payment-detail'),
+    path('recent-activities/', RecentActivityView.as_view(), name='recent-activities'),
     
      
     
