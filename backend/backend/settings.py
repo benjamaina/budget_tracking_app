@@ -40,6 +40,8 @@ REST_FRAMEWORK = {
     ],
 }
 
+# settings.py
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -136,11 +138,6 @@ CACHES = {
 }
 
 
-# Pagination settings
-REST_FRAMEWORK = {
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
-    "PAGE_SIZE": 10,  # number of items per page
-}
 # Throttling settings
 
 REST_FRAMEWORK = {

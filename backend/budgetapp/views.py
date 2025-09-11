@@ -30,6 +30,7 @@ from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404
+from rest_framework.pagination import PageNumberPagination
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,21 @@ class UserSettingsView(generics.RetrieveUpdateAPIView):
         return settings
 
 
+class EventPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+    
+    def get_paginated_response(self, data):
+        return Response({
+            'count': self.page.paginator.count,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'total_pages': self.page.paginator.num_pages,
+            'current_page': self.page.number,
+            'results': data
+        })
+
 class EventViewSet(viewsets.ModelViewSet):
     """
     CRUD operations for Events.
@@ -114,7 +130,9 @@ class EventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "event"
+    pagination_class = EventPagination
 
+    
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -138,7 +156,7 @@ class BudgetItemViewSet(viewsets.ModelViewSet):
     serializer_class = BudgetItemSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
-
+    pagination_class = EventPagination
 
 
     def get_queryset(self):
@@ -161,6 +179,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    pagination_class = EventPagination
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
@@ -179,6 +198,8 @@ class PledgeViewSet(viewsets.ModelViewSet):
     serializer_class = PledgeSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    pagination_class = EventPagination
+    throttle_classes = [EventScopedThrottle, UserWriteThrottle]
 
     def retrieve(self, request, *args, **kwargs):
         """Custom retrieve to serialize single pledge."""
@@ -206,6 +227,7 @@ class MpesaPaymentViewSet(viewsets.ModelViewSet):
     serializer_class = MpesaPaymentSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    pagination_class = EventPagination
 
     def get_queryset(self):
         return MpesaPayment.objects.filter(user=self.request.user)
@@ -221,6 +243,7 @@ class ManualPaymentViewSet(viewsets.ModelViewSet):
     serializer_class = ManualPaymentSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    pagination_class = EventPagination
 
     def get_queryset(self):
         pledge_id = self.kwargs.get('pledge_id')
@@ -242,6 +265,7 @@ class MpesaInfoView(viewsets.ModelViewSet):
     serializer_class = MpesaInfoSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    pagination_class = EventPagination
 
     def get_queryset(self):
         return MpesaInfo.objects.filter(user=self.request.user)
@@ -269,6 +293,7 @@ class VendorPaymentViewSet(viewsets.ModelViewSet):
     serializer_class = VendorPaymentSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    pagination_class = EventPagination
 
     def get_queryset(self):
         return VendorPayment.objects.filter(user=self.request.user)
@@ -284,6 +309,7 @@ class ServiceProviderViewSet(viewsets.ModelViewSet):
     serializer_class = ServiceProviderSerializer
     uthentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    pagination_class = EventPagination
 
     def get_queryset(self):
         return ServiceProvider.objects.filter(user=self.request.user)
