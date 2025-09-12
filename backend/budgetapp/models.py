@@ -111,6 +111,10 @@ class BudgetItem(models.Model):
     estimated_budget = models.DecimalField(max_digits=12, decimal_places=2)
     is_funded = models.BooleanField(default=False)
 
+
+    class Meta:
+        ordering = ['category']
+
     @property
     def total_vendor_payments(self):
         return self.payments.aggregate(total=models.Sum('amount'))['total'] or 0
@@ -166,6 +170,12 @@ class ServiceProvider(models.Model):
     email = models.EmailField(blank=True, null=True, db_index=True)
     amount_charged = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('budget_item', 'name', 'phone_number')
+
+
     @property
     def total_received(self):
         return self.payments.aggregate(total=models.Sum('amount'))['total'] or 0
@@ -203,6 +213,12 @@ class VendorPayment(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     confirmed = models.BooleanField(default=False)  
     
+
+
+    class Meta:
+        ordering = ['-date_paid']
+        unique_together = ('service_provider', 'transaction_code')
+
 
     @property
     def total_paid(self):
@@ -246,6 +262,8 @@ class Task(models.Model):
     allocated_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
+    class Meta:
+        ordering = ['title']
         
     def clean(self):
         if self.allocated_amount < 0:
@@ -291,6 +309,9 @@ class Pledge(models.Model):
     is_fulfilled = models.BooleanField(default=False)
 
 
+    class Meta:
+        ordering = ['-id']
+        
 
     def balance(self):
         if not self.pk:
@@ -326,6 +347,13 @@ class MpesaPayment(models.Model):
     transaction_id = models.CharField(max_length=100, unique=True, db_index=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['transaction_id']),
+            models.Index(fields=['timestamp']),
+        ]
+
     def clean(self):
         if self.amount <= 0:
             raise ValidationError("Payment amount must be positive.")
@@ -346,6 +374,12 @@ class ManualPayment(models.Model):
     date = models.DateField(default=timezone.now, db_index=True)
     
 
+    class Meta:
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['date']),
+        ]
+
     def clean(self):
         if self.amount <= 0:
             raise ValidationError("Payment amount must be positive.")
@@ -365,7 +399,11 @@ class MpesaInfo(models.Model):
     account_name = models.CharField(max_length=50, blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True, db_index=True)
     
-
+    class Meta:
+        verbose_name = "Mpesa Information"
+        verbose_name_plural = "Mpesa Information"
+        ordering = ['user__username']
+        
     @staticmethod
     def auto_assign_pledge(payment):
         try:

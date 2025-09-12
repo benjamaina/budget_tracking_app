@@ -136,7 +136,7 @@ class EventViewSet(viewsets.ModelViewSet):
             user = self.request.user
             if not user or not user.is_authenticated:
                 return Event.objects.none()  # return empty queryset instead of crashing
-            return Event.objects.filter(user=user)
+            return Event.objects.filter(user=user).order_by('-event_date', 'name')
         except Exception as e:
             logger.error(f"Error fetching events for user {self.request.user}: {e}")
             return Event.objects.none()
@@ -177,7 +177,7 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
-        return Task.objects.filter(event_id=event_id, user=self.request.user)
+        return Task.objects.filter(event_id=event_id, user=self.request.user).order_by('due_date', 'name')
 
     def perform_create(self, serializer):
         event_id = self.kwargs.get('event_id')
