@@ -1,6 +1,6 @@
 Budget Tracking App
 
-A full-stack event budgeting and pledge tracking system built with Django REST Framework (backend) and React (Lovable) frontend. Designed for event organizers to manage budgets, pledges, payments, tasks, and service providers, with support for M-Pesa integration and interactive dashboards.
+A full-stack event budgeting and pledge tracking system built with Django REST Framework (backend) and React (Lovable) frontend, containerized with Docker + Nginx for easy deployment. Designed for event organizers to manage budgets, pledges, payments, tasks, and service providers, with support for M-Pesa integration and interactive dashboards.
 
 ✨ Features
 
@@ -20,7 +20,9 @@ Authentication – Secure API endpoints using JWT (SimpleJWT).
 
 Caching & Performance – Redis integration for performance where needed.
 
-Extensible Frontend – A React frontend (Lovable) is under development.
+Extensible Frontend – A React (Lovable) frontend integrated with backend APIs.
+
+Containerized Deployment – Dockerized backend + frontend, served via Nginx.
 
 🛠 Tech Stack
 
@@ -40,202 +42,106 @@ Frontend
 
 React (Lovable AI generated, customized)
 
-Tailwind CSS + RippleUI (planned styling stack)
+Tailwind CSS + RippleUI
 
-Other
+Deployment / Infra
+
+Docker & Docker Compose
+
+Nginx (reverse proxy for serving frontend + backend APIs)
 
 SimpleJWT for authentication
 
 FactoryBoy + Faker for testing
 
-Docker (optional for deployment)
-
 📂 Project Structure
+
 budget_tracking_app/
-├── events/              # Event and budget item models, serializers, views
-├── pledges/             # Pledge and donor management
-├── payments/            # Vendor, M-Pesa, and manual payments
-├── tasks/               # Task and reminder management
-├── users/               # Authentication, JWT handling
-├── tests/               # Unit and integration tests
-├── manage.py
-└── requirements.txt
+├── backend/             # Django backend (DRF, models, views, serializers)
+│   ├── events/
+│   ├── pledges/
+│   ├── payments/
+│   ├── tasks/
+│   ├── users/
+│   ├── tests/
+│   ├── manage.py
+│   └── requirements.txt
+├── frontend/            # React (Lovable) frontend
+├── nginx/               # Nginx config for reverse proxy
+├── docker-compose.yml   # Orchestration for backend, frontend, db, redis
+└── Dockerfile(s)        # Service-specific Dockerfiles
+
 
 🚀 Getting Started
+
 Prerequisites
 
-Python 3.10+
+Docker & Docker Compose
+
+Python 3.10+ (if running backend outside Docker)
+
+Node.js (if running frontend outside Docker)
 
 MySQL 8+
 
-Redis (optional, for caching)
+Redis (optional for caching)
 
-Node.js (for frontend, once merged)
-
-Backend Setup
+🔹 Option 1: Run with Docker (recommended)
 # Clone repository
 git clone https://github.com/benjamaina/budget_tracking_app.git
 cd budget_tracking_app
 
-# Create virtual environment
+# Start services (backend, frontend, db, redis, nginx)
+docker compose up --build
+
+
+Backend runs on: http://localhost:8000/api/
+
+Frontend runs on: http://localhost:3000/
+
+Nginx reverse proxy: http://localhost/
+
+🔹 Option 2: Manual Backend Setup
+cd backend
 python -m venv venv
 source venv/bin/activate   # On Windows: venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Configure environment variables
-cp .env.example .env
-# Edit .env with your DB credentials and secret key
-
-# Run migrations
+cp .env.example .env  # configure DB + secrets
 python manage.py migrate
-
-# Start development server
 python manage.py runserver
 
-Environment Variables (.env)
+🔹 Option 3: Manual Frontend Setup
+cd frontend
+npm install
+npm run dev
+
+
+🌍 Environment Variables (.env for backend)
+
 SECRET_KEY=your_django_secret_key
 DEBUG=True
 DB_NAME=budgetdb
 DB_USER=ben
 DB_PASSWORD=your_password
-DB_HOST=localhost
+DB_HOST=db
 DB_PORT=3306
 
-🔑 Authentication
-
-This project uses JWT.
-
-Obtain tokens by POSTing to:
-
-POST /api/token/
-{
-  "username": "your_username",
-  "password": "your_password"
-}
-
-
-Use the access token in headers:
-
-Authorization: Bearer <your_access_token>
-
-
-Refresh tokens:
-
-POST /api/token/refresh/
-{
-  "refresh": "<your_refresh_token>"
-}
-
-📡 API Documentation
-🔹 Events
-
-List Events
-GET /api/events/
-
-Create Event
-POST /api/events/
-
-{
-  "name": "Wedding Ceremony",
-  "date": "2025-12-20",
-  "location": "Nairobi",
-  "description": "Main family event"
-}
-
-
-Retrieve Event
-GET /api/events/{id}/
-
-Update Event
-PUT /api/events/{id}/
-
-Delete Event
-DELETE /api/events/{id}/
-
-🔹 Budget Items
-
-List Budget Items for Event
-GET /api/events/{event_id}/budget-items/
-
-Create Budget Item
-POST /api/events/{event_id}/budget-items/
-
-{
-  "category": "Catering",
-  "description": "Buffet for 200 guests",
-  "amount": 150000
-}
-
-🔹 Pledges
-
-List Pledges for Event
-GET /api/events/{event_id}/pledges/
-
-Create Pledge
-POST /api/events/{event_id}/pledges/
-
-{
-  "donor": {
-    "name": "John Doe",
-    "phone": "+254712345678"
-  },
-  "amount": 50000
-}
-
-🔹 Payments
-
-Record Manual Payment
-POST /api/events/{event_id}/payments/manual/
-
-{
-  "pledge_id": 2,
-  "amount": 20000,
-  "method": "cash"
-}
-
-
-Record M-Pesa Payment (Callback)
-POST /api/mpesa/callback/
-
-(Future: full STK Push integration)
-
-🔹 Tasks
-
-Create Task
-POST /api/events/{event_id}/tasks/
-
-{
-  "title": "Book the venue",
-  "due_date": "2025-11-01",
-  "assigned_to": "committee_member"
-}
-
-🧪 Running Tests
-pytest
-
-
-FactoryBoy and Faker are used for generating test data.
 
 📊 Roadmap
 
- Finalize React frontend integration
+✅ Dockerize backend & frontend
 
- M-Pesa payments (STK push & callbacks)
+✅ Add Nginx reverse proxy
 
- Export reports (PDF, Excel)
+🔜 Finalize React frontend integration
 
- Notifications & reminders
+🔜 Full M-Pesa STK Push + callbacks
 
- Role-based access control (organizers vs donors)
+🔜 Export reports (PDF, Excel)
 
- CI/CD setup with GitHub Actions
+🔜 Notifications & reminders
 
-🤝 Contributing
+🔜 Role-based access control (organizers vs donors)
 
-Pull requests are welcome. Please fork the repo and submit a PR for review.
-
-📜 License
-
-MIT License – feel free to use and adapt.
+🔜 CI/CD setup with GitHub Actions

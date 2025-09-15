@@ -140,8 +140,6 @@ class PledgeSerializer(serializers.ModelSerializer):
         if self.instance:
             total_pledged -= self.instance.amount_pledged
 
-        if amount_pledged + total_pledged > event.total_budget:
-            raise serializers.ValidationError("Pledge amount exceeds event's total budget.")
         
         if amount_pledged <= 0:
             raise serializers.ValidationError("Amount pledged must be greater than zero.")

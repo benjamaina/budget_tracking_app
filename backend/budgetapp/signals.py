@@ -40,15 +40,20 @@ def update_budget_item_funding_status(sender, instance, **kwargs):
             logging.error(f"Error updating funding status for budget item {budget_item_id}: {e}")
 
 
+
+
 @receiver([post_save, post_delete], sender=MpesaPayment)
 @receiver([post_save, post_delete], sender=ManualPayment)
 def update_pledge_payment_status(sender, instance, **kwargs):
-    if instance.pledge:
-        try:
-            instance.pledge.update_payment_status()
-        except Exception as e:
-            logging.error(f"Error updating payment status for pledge {instance.pledge.id}: {e}")
+    # Defensive: ensure instance still has a pledge
+    pledge = getattr(instance, 'pledge', None)
+    if pledge is None:
+        return  # nothing to update
 
+    try:
+        pledge.update_payment_status()
+    except Exception as e:
+        logging.error(f"Error updating payment status for pledge {getattr(pledge, 'id', 'unknown')}: {e}")
 
 
 @receiver(post_save, sender=ManualPayment)

@@ -106,7 +106,7 @@ class Event(models.Model):
 
 class BudgetItem(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="budget_items", db_index=True)
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="budget_items", db_index=True, null=True, blank=True)
+    event = models.ForeignKey(Event, on_delete=models.PROTECT, related_name="budget_items", db_index=True, null=True, blank=True)
     category = models.CharField(max_length=255, db_index=True)
     estimated_budget = models.DecimalField(max_digits=12, decimal_places=2)
     is_funded = models.BooleanField(default=False)
@@ -301,7 +301,7 @@ class Task(models.Model):
 
 class Pledge(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="pledges", db_index=True)
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="pledges", db_index=True, null=True, blank=True)
+    event = models.ForeignKey(Event, on_delete=models.PROTECT, related_name="pledges", db_index=True, null=True, blank=True)
     amount_pledged = models.DecimalField(max_digits=10, decimal_places=2)
     name = models.CharField(blank=False, null=False, max_length= 25, db_index=True)
     phone_number = models.CharField(max_length=15, db_index=True)
@@ -341,7 +341,7 @@ class Pledge(models.Model):
 
 class MpesaPayment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="mpesa_payments", db_index=True)
-    pledge = models.ForeignKey(Pledge, on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', db_index=True)
+    pledge = models.ForeignKey(Pledge, on_delete=models.CASCADE, null=True, blank=True, related_name='payments', db_index=True)
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="mpesa_payments", db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     transaction_id = models.CharField(max_length=100, unique=True, db_index=True)
@@ -369,7 +369,7 @@ class MpesaPayment(models.Model):
 class ManualPayment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="manual_payments", db_index=True)
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="manual_payments", db_index=True, null=True, blank=True)
-    pledge = models.ForeignKey(Pledge, on_delete=models.SET_NULL, null=True, blank=True, related_name='manual_payments', db_index=True)
+    pledge = models.ForeignKey(Pledge, on_delete=models.CASCADE, null=True, blank=True, related_name='manual_payments', db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateField(default=timezone.now, db_index=True)
     

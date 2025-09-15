@@ -43,18 +43,16 @@ REST_FRAMEWORK = {
 # settings.py
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ['*'] 
+REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'backend.utils.custom_exception_handler',
+}
 
-CORS_ALLOWED_ORIGINS = [
-    "https://2aea5419-4b23-4a69-87e0-5b36067c30f1.lovableproject.com",
-    "http://localhost:8080",
-]
 
-# Or for development, you can use:
-CORS_ALLOW_ALL_ORIGINS = True
 
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', cast=Csv())
+CORS_ALLOWED_ORIGINS = config('DJANGO_CORS_ORIGINS', cast=Csv())
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -130,12 +128,12 @@ DATABASES = {
     }
 }
 
-# settings.py (snippets)
+
 
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": "redis://redis:6379/1",
         "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
     }
 }
@@ -200,8 +198,19 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
+# Static & media
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
-STATIC_URL = 'static/'
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Security best-practices (toggle as needed)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = "DENY"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

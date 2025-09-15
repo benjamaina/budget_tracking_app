@@ -25,6 +25,11 @@ from django.db.models import Sum
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
 from django.core.cache import cache
+from django.db.models.deletion import ProtectedError
+from rest_framework import status, serializers
+from rest_framework.response import Response
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +134,10 @@ class EventViewSet(viewsets.ModelViewSet):
     
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        try:
+            serializer.save(user=self.request.user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
 
     def get_queryset(self):
         try:
@@ -141,6 +149,20 @@ class EventViewSet(viewsets.ModelViewSet):
             logger.error(f"Error fetching events for user {self.request.user}: {e}")
             return Event.objects.none()
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError as e:
+            protected_objects = [str(obj) for obj in e.protected_objects]
+            return Response(
+                {
+                    "detail": "Cannot delete because the following related objects exist.",
+                    "related_objects": protected_objects,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class BudgetItemViewSet(viewsets.ModelViewSet):
     """
@@ -165,6 +187,21 @@ class BudgetItemViewSet(viewsets.ModelViewSet):
         except DjangoValidationError as e:
             raise serializers.ValidationError(e.message_dict)
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError as e:
+            protected_objects = [str(obj) for obj in e.protected_objects]
+            return Response(
+                {
+                    "detail": "Cannot delete because the following related objects exist.",
+                    "related_objects": protected_objects,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class TaskViewSet(viewsets.ModelViewSet):
     """
@@ -176,13 +213,18 @@ class TaskViewSet(viewsets.ModelViewSet):
     pagination_class = EventPagination
 
     def get_queryset(self):
-        event_id = self.kwargs.get('event_id')
-        return Task.objects.filter(event_id=event_id, user=self.request.user).order_by('due_date', 'name')
-
+        try:
+            budget_item_id = self.kwargs.get('budget_item_id')
+            if budget_item_id:
+                return Task.objects.filter(budget_item_id=budget_item_id, user=self.request.user)
+            return Task.objects.filter(user=self.request.user)
+        except Exception as e:
+            logger.error(f"Error fetching tasks for user {self.request.user}: {e}")
+            return Task.objects.none()
+        
     def perform_create(self, serializer):
-        event_id = self.kwargs.get('event_id')
-        event = Event.objects.get(id=event_id)
-        serializer.save(user=self.request.user, event=event)
+        serializer.save(user=self.request.user)
+        
 
 
 class PledgeViewSet(viewsets.ModelViewSet):
@@ -203,9 +245,14 @@ class PledgeViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Assign pledge to event and user on create."""
-        event_id = self.request.data.get('event')
-        event = Event.objects.get(id=event_id)
-        serializer.save(user=self.request.user, event=event)
+        try:
+            event_id = self.request.data.get('event')
+            event = Event.objects.get(id=event_id)
+            serializer.save(user=self.request.user, event=event)
+        except Event.DoesNotExist:
+            raise serializers.ValidationError({"event": "Event does not exist."})
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
@@ -213,7 +260,19 @@ class PledgeViewSet(viewsets.ModelViewSet):
             return Pledge.objects.filter(event_id=event_id, user=self.request.user)
         return Pledge.objects.filter(user=self.request.user)
 
-
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError as e:
+            # Format the related objects into a nice error message
+            protected_objects = [str(obj) for obj in e.protected_objects]
+            raise serializers.ValidationError({
+                "detail": "Cannot delete because the following related objects exist.",
+                "related_objects": protected_objects
+            })
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
 class MpesaPaymentViewSet(viewsets.ModelViewSet):
     """
     CRUD for M-Pesa payments made by users.
@@ -227,7 +286,10 @@ class MpesaPaymentViewSet(viewsets.ModelViewSet):
         return MpesaPayment.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        try:
+            serializer.save(user=self.request.user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
 
 
 class ManualPaymentViewSet(viewsets.ModelViewSet):
@@ -246,10 +308,14 @@ class ManualPaymentViewSet(viewsets.ModelViewSet):
         return ManualPayment.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        pledge_id = self.kwargs.get('pledge_id')
-        pledge = Pledge.objects.get(id=pledge_id)
-        serializer.save(user=self.request.user, pledge=pledge)
-
+        try:
+            pledge_id = self.kwargs.get('pledge_id')
+            pledge = Pledge.objects.get(id=pledge_id)
+            serializer.save(user=self.request.user, pledge=pledge)
+        except Pledge.DoesNotExist:
+            raise serializers.ValidationError({"pledge": "Pledge does not exist."})
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
 
 class MpesaInfoView(viewsets.ModelViewSet):
     """
@@ -293,7 +359,10 @@ class VendorPaymentViewSet(viewsets.ModelViewSet):
         return VendorPayment.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        try:
+            serializer.save(user=self.request.user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
 
 
 class ServiceProviderViewSet(viewsets.ModelViewSet):
