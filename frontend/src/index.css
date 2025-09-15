@@ -1,0 +1,203 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Event Budget Management System - Design System
+Dark, sophisticated theme with smooth animations for financial application
+*/
+
+@layer base {
+  :root {
+    /* Dark Theme Base */
+    --background: 220 13% 8%;
+    --foreground: 220 9% 95%;
+
+    /* Surface Colors */
+    --card: 220 13% 10%;
+    --card-foreground: 220 9% 95%;
+    --surface: 220 13% 12%;
+    --surface-elevated: 220 13% 15%;
+
+    /* Navigation & Containers */
+    --popover: 220 13% 12%;
+    --popover-foreground: 220 9% 95%;
+
+    /* Brand & Primary Actions */
+    --primary: 220 13% 95%;
+    --primary-foreground: 220 13% 8%;
+    --primary-hover: 220 9% 85%;
+
+    /* Secondary Actions */
+    --secondary: 220 13% 15%;
+    --secondary-foreground: 220 9% 80%;
+    --secondary-hover: 220 13% 18%;
+
+    /* Subtle Elements */
+    --muted: 220 13% 14%;
+    --muted-foreground: 220 9% 60%;
+
+    /* Accent & Status Colors */
+    --accent: 160 84% 39%;
+    --accent-foreground: 220 13% 8%;
+    --accent-muted: 160 30% 25%;
+
+    /* Financial Status Colors */
+    --success: 160 84% 39%;
+    --success-foreground: 220 13% 8%;
+    --success-muted: 160 30% 15%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 13% 8%;
+    --warning-muted: 38 50% 20%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 220 13% 95%;
+    --destructive-muted: 0 40% 20%;
+
+    /* Interactive Elements */
+    --border: 220 13% 20%;
+    --border-subtle: 220 13% 15%;
+    --input: 220 13% 15%;
+    --input-border: 220 13% 25%;
+    --ring: 160 84% 39%;
+
+    /* Shadows */
+    --shadow-subtle: 220 50% 2%;
+    --shadow-medium: 220 50% 1%;
+
+    /* Animation Durations */
+    --transition-fast: 150ms;
+    --transition-medium: 250ms;
+    --transition-slow: 350ms;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--surface));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
+
+@layer components {
+  /* Animation classes */
+  .animate-fade-in {
+    animation: fade-in var(--transition-medium) ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slide-up var(--transition-medium) ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in var(--transition-fast) ease-out;
+  }
+
+  /* Hover animations */
+  .hover-lift {
+    transition: transform var(--transition-fast) ease-out;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+
+  /* Glass effect */
+  .glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Gradient backgrounds */
+  .gradient-accent {
+    background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--accent-muted)) 100%);
+  }
+
+  .gradient-success {
+    background: linear-gradient(135deg, hsl(var(--success)) 0%, hsl(var(--success-muted)) 100%);
+  }
+
+  .gradient-warning {
+    background: linear-gradient(135deg, hsl(var(--warning)) 0%, hsl(var(--warning-muted)) 100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
