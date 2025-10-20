@@ -20,10 +20,8 @@ services:
     build:
       context: ../frontend/
       dockerfile: Dockerfile.dev
-    command: ["npm", "run", "build"]
     volumes:
-      - frontend_dist:/app/dist
-    # no ports! it's only for building React
+      - frontend_dist:/usr/share/nginx/html  # match nginx directory
     depends_on:
       - web
 

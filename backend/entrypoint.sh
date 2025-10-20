@@ -2,11 +2,11 @@
 set -e
 
 # wait-for-db (simple loop)
-echo "Waiting for database..."
-while ! nc -z $POSTGRES_HOST $POSTGRES_PORT; do
+echo "Waiting for MySQL..."
+while ! nc -z $MYSQL_HOST $MYSQL_PORT; do
   sleep 0.5
 done
-echo "Database up"
+echo "MySQL is up"
 
 # run migrations
 python manage.py migrate --noinput

@@ -13,7 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from datetime import timedelta
 from pathlib import Path
 import os
-from decouple import config, Csv
+from decouple import config, Csv # type: ignore
 
 
 
